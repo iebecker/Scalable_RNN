@@ -13,9 +13,9 @@ import utils
 class Preprocesser():
     '''Class that implements functions prepare, read,
     transform and save the data'''
-    def __init__(self, file_train, file_dev, save_dir='./',
+    def __init__(self, file_train, save_dir='./',
                  max_L=40000, min_L=500, min_N=0, max_N = 2000, w=4, s=2, w_time=True,
-                 num_cores=8, train0_size = 0.95, train1_size=0.5, dev_size=0.25,
+                 num_cores=8, train_size = 0.70, val_size=0.10, test_size=0.2,
                  lc_parameters = None, inference= False, inference_folder = None):
 
         # Set inference mode
@@ -45,7 +45,7 @@ class Preprocesser():
         self.read_datasets()
 
         # Extract classes and the number of them
-        self.classes = list(set(self.data.Class))
+        self.classes = list(set(self.data_train.Class))
         self.num_classes = len(self.classes)
 
         # Container for the data
@@ -68,12 +68,10 @@ class Preprocesser():
 
         # Set the train/test/val sizes
         self.train_size = train_size
-        # self.traindev_size = 1 - train0_size
 
-        self.train_size = train_size
-        # self.dev_size = dev_size
-        # self.test_size = 1 - dev_size - train1_size
-        self.test_size = 1 - train_size
+        self.test_size = test_size
+        self.val_size = val_size
+
 
         # Auxiliary functions to parallelize
         # Parallel does not work with class functions (for some reason)
@@ -122,14 +120,15 @@ class Preprocesser():
         '''Read the dataset, extract the LCs information, with the class and ID.
         Filter the specified number of LC per class, so it does not read everything '''
         # Read stars Data
-        self.data = pd.read_csv(self.file_train, usecols=['ID', 'Address','Class','N'])
+        self.data_train = pd.read_csv(self.file_train, usecols=['ID', 'Address','Class','N'])
 
         # Extract classes and the number of them
-        self.classes = list(set(self.data.Class))
-        self.num_classes = len(self.data)
+        self.classes = list(set(self.data_train.Class))
+        self.num_classes = len(self.classes)
 
         # Filter train according to number of observations and elements per class
         self.filter_train()
+
 
 
     def paralell_read(self):
@@ -139,7 +138,7 @@ class Preprocesser():
         # Read the light curves in parallel
         print('Reading')
         ext = Parallel(self.njobs)(delayed(self.__func_read)(address_, class_, id_, self.lc_parameters) for address_, class_, id_ in
-                                 tqdm(zip(self.data.Address, self.data.Class, self.data.ID)))
+                                 tqdm(zip(self.data_train.Address, self.data_train.Class, self.data_train.ID)))
 
         # Create a dictionary by class
         self.lcs = {c: [] for c in self.classes}
@@ -210,7 +209,7 @@ class Preprocesser():
         test_ids, val_ids = train_test_split(
             test_val_ids,
             train_size=self.test_size/(1-self.train_size),
-            stratify=self.data.loc[test_val_ids].Class)
+            stratify=self.data_train.loc[test_val_ids].Class)
 
         ind_train, ind_test, ind_val = self.indices(train_ids, val_ids, test_ids)
 
@@ -237,19 +236,19 @@ class Preprocesser():
     def serialize_all(self):
         '''Serialize the data into TFRecords.'''
 
-        self.serialize(self.Matrices_train[i],
-                       self.Labels_train[i],
-                       self.IDs_train[i]],
+        self.serialize(self.Matrices_train,
+                       self.Labels_train,
+                       self.IDs_train,
                        self.save_dir+'Train.tfrecord')
 
-        self.serialize(self.Matrices_val[i],
-                       self.Labels_val[i],
-                       self.IDs_val[i]],
+        self.serialize(self.Matrices_val,
+                       self.Labels_val,
+                       self.IDs_val,
                        self.save_dir+'Val.tfrecord')
 
-        self.serialize(self.Matrices_test[i],
-                       self.Labels_test[i],
-                       self.IDs_test[i]],
+        self.serialize(self.Matrices_test,
+                       self.Labels_test,
+                       self.IDs_test,
                        self.save_dir+'Test.tfrecord')
 
         # with open(self.save_dir+'Train.tfrecord', 'w') as f:
@@ -278,7 +277,7 @@ class Preprocesser():
 
         self.serialize(self.Matrices[i],
                         self.Labels[i],
-                        self.IDs[i]
+                        self.IDs[i],
                         save_path)
 
     def serialize(self, Matrices, Labels, IDs, save_path):
@@ -311,7 +310,7 @@ class Preprocesser():
     def prepare(self, filename=None):
         self.paralell_read()
         self.paralell_process()
-        self.split_train_dev()
+        self.split_train()
         self.serialize_all()
         self.write_metadata_process()
 
