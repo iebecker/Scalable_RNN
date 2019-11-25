@@ -2,6 +2,7 @@ import json
 import itertools
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import os
 from sklearn.metrics import confusion_matrix
 import tensorflow as tf
@@ -279,7 +280,7 @@ class Network():
     def add_writers(self):
         graph = tf.compat.v1.get_default_graph()
         self.writer_train = tf.compat.v1.summary.FileWriter(self.log_folder_train, graph, flush_secs=30)
-        self.writer_val = tf.compat.v1.summary.FileWriter(self.log_folder_traindev, graph, flush_secs=30)
+        self.writer_val = tf.compat.v1.summary.FileWriter(self.log_folder_val, graph, flush_secs=30)
         # self.writer_dev = tf.compat.v1.summary.FileWriter(self.log_folder_dev, graph, flush_secs=30)
 
     def add_saver(self):
@@ -370,7 +371,7 @@ class Network():
 
         return loss
 
-    def train(self, train_args, tfrecords_train, tfrecords_traindev):#, tfrecords_dev):
+    def train(self, train_args, tfrecords_train, tfrecords_val):#, tfrecords_dev):
 
         tf.compat.v1.reset_default_graph()
         self.set_train_settings(**train_args)
@@ -398,13 +399,11 @@ class Network():
                     sess.run(self.train_step, feed_dict)
 
                     if step%self.val_steps==0:
-                        # args_dev = [sess, tfrecords_dev, self.writer_dev, self.plot_folder_dev, self.size_dev, step, 'Dev']
-                        # args_traindev = [sess, tfrecords_traindev, self.writer_traindev, self.plot_folder_traindev, self.size_traindev, step, 'Traindev']
                         args_train = [sess, tfrecords_train, self.writer_train, self.plot_folder_train, self.size_train, step, 'Train']
+                        args_val = [sess, tfrecords_val, self.writer_val, self.plot_folder_val, self.size_val, step, 'Val']
 
                         loss_train = self.save_metrics(*args_train)
                         loss_val = self.save_metrics(*args_val)
-                        # _ = self.save_metrics(*args_train)
 
                         if loss_val < self.best_loss:
                             self.best_loss = loss_val
@@ -452,6 +451,7 @@ class Network():
             if not return_p:
                 predictions.pop('pred_probs')
 
+            self.predictions = pd.DataFrame(predictions)
             print('Prediction accuracy: {:3.2f}%'.format(100 * (1-err)))
 
-            return predictions
+            return self.predictions
