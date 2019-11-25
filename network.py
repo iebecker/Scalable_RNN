@@ -20,14 +20,14 @@ class Network():
             self.num_classes= metadata['Numer of classes']
             self.size_train = int(metadata['Classes Info']['Train set']['Total'])
             self.size_traindev = int(metadata['Classes Info']['Train-dev set']['Total'])
-            self.size_dev = int(metadata['Classes Info']['Dev set']['Total'])
+            # self.size_dev = int(metadata['Classes Info']['Dev set']['Total'])
             self.size_test = int(metadata['Classes Info']['Test set']['Total'])
             trans = metadata['Classes Info']['Keys']
             keys = [int(k) for k in trans.keys()]
             self.trans = dict(zip(keys, trans.values()))
 
-    def set_train_settings(self, metadata_pre_path, size_hidden=None, rnn_layers=None, fc_units=None, fc_layers=None, 
-        buffer_size=None, epochs=None, num_cores=None, batch_size=None, dropout=None, lr=None, val_steps=None, max_to_keep=None, 
+    def set_train_settings(self, metadata_pre_path, size_hidden=None, rnn_layers=None, fc_units=None, fc_layers=None,
+        buffer_size=None, epochs=None, num_cores=None, batch_size=None, dropout=None, lr=None, val_steps=None, max_to_keep=None,
         save_dir='./'):
 
         self.load_preprocess_data(metadata_pre_path)
@@ -48,12 +48,12 @@ class Network():
         log_folder = save_dir + 'Logs/'
         self.log_folder_train = log_folder + 'train/'
         self.log_folder_traindev = log_folder + 'traindev/'
-        self.log_folder_dev = log_folder + 'dev/'
-        
+        # self.log_folder_dev = log_folder + 'dev/'
+
         plot_folder = save_dir + 'Plots/'
         self.plot_folder_train = plot_folder + 'train/'
         self.plot_folder_traindev = plot_folder + 'traindev/'
-        self.plot_folder_dev = plot_folder + 'dev/'
+        # self.plot_folder_dev = plot_folder + 'dev/'
 
         self.model_dir = save_dir + 'Model/'
 
@@ -142,8 +142,8 @@ class Network():
             normalizer_fn=tf.contrib.layers.batch_norm
             )
         dropout_layer = tf.layers.dropout(
-            inputs=hidden_layer, 
-            rate=self.dropout, 
+            inputs=hidden_layer,
+            rate=self.dropout,
             training=self.is_train,
             name='Dropout_'+str(i),noise_shape=None
             )
@@ -172,15 +172,15 @@ class Network():
         lc_ = tf.cast(lc_,tf.float32)
         lc = tf.reshape(lc_, [N, self.window])
 
-        return lc, lbl, N, ID_ 
+        return lc, lbl, N, ID_
 
     def add_input_iterators(self):
         with tf.device('/cpu:0'), tf.name_scope('Iterators'):
-            
+
             self.filename_pl = tf.compat.v1.placeholder(tf.string, shape=[None],name='Filename')
             self.epochs_pl = tf.compat.v1.placeholder(tf.int64, shape=[],name='Epochs')
             self.handle_pl = tf.compat.v1.placeholder(tf.string, shape=[],name='Handle')
-            
+
             dataset = tf.data.TFRecordDataset(self.filename_pl)
             dataset = dataset.repeat(count=self.epochs)
             dataset = dataset.map(self.data_parser, num_parallel_calls=self.num_cores)
@@ -196,8 +196,8 @@ class Network():
             self.iterator_train = tf.compat.v1.data.make_initializable_iterator(dataset)
 
             self.iterator = tf.compat.v1.data.Iterator.from_string_handle(
-                self.handle_pl, 
-                tf.compat.v1.data.get_output_types(dataset), 
+                self.handle_pl,
+                tf.compat.v1.data.get_output_types(dataset),
                 tf.compat.v1.data.get_output_shapes(dataset)
                 )
             self.next_element = self.iterator.get_next()
@@ -234,7 +234,7 @@ class Network():
                     self.fc = self.add_FC(self.last_h, i)
                 else:
                     self.fc = self.add_FC(self.fc, i)
-        
+
         with tf.compat.v1.variable_scope('Softmax'):
             if self.fc_layers > 0:
                 weight = tf.random.truncated_normal([self.fc_units, self.num_classes], stddev=0.1, dtype=tf.float32)
@@ -263,7 +263,7 @@ class Network():
             lr = tf.compat.v1.train.exponential_decay(self.lr, self.global_step, 1000, 0.98, staircase=True)
             optimizer = tf.compat.v1.train.AdamOptimizer(lr)
             grads_and_vars = optimizer.compute_gradients(loss, tf.compat.v1.trainable_variables())
-            
+
             # Gradient clipping
             capped_grads_and_vars = []
             h = []
@@ -274,7 +274,7 @@ class Network():
                 else:
                     n = grad
                 capped_grads_and_vars.append((n, var))
-            
+
             self.train_step = optimizer.apply_gradients(capped_grads_and_vars, global_step=self.global_step)
 
         self.summary_op = tf.compat.v1.summary.merge([err_summ, loss_summ, h, last_h_hist, cell_weights])
@@ -283,7 +283,7 @@ class Network():
         graph = tf.compat.v1.get_default_graph()
         self.writer_train = tf.compat.v1.summary.FileWriter(self.log_folder_train, graph, flush_secs=30)
         self.writer_traindev = tf.compat.v1.summary.FileWriter(self.log_folder_traindev, graph, flush_secs=30)
-        self.writer_dev = tf.compat.v1.summary.FileWriter(self.log_folder_dev, graph, flush_secs=30)
+        # self.writer_dev = tf.compat.v1.summary.FileWriter(self.log_folder_dev, graph, flush_secs=30)
 
     def add_saver(self):
         self.saver = tf.compat.v1.train.Saver(max_to_keep=self.max_to_keep)
@@ -313,7 +313,7 @@ class Network():
             cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
             for i in range(cm.shape[0]):
                 for j in range(cm.shape[1]):
-                    cm[i,j] ='%.2f' %cm[i,j] 
+                    cm[i,j] ='%.2f' %cm[i,j]
 
         thresh = 0.001
         for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
@@ -331,26 +331,26 @@ class Network():
         save_path = save_dir + 'CM-' + str(step) + '.png'
 
         plt.clf()
-        plt.rc('font', size=15)          
-        plt.rc('axes', titlesize=15)     
-        plt.rc('axes', labelsize=20)    
-        plt.rc('xtick', labelsize=15)   
-        plt.rc('ytick', labelsize=15)   
-        plt.rc('legend', fontsize=15)   
-        plt.rc('figure', titlesize=22)  
+        plt.rc('font', size=15)
+        plt.rc('axes', titlesize=15)
+        plt.rc('axes', labelsize=20)
+        plt.rc('xtick', labelsize=15)
+        plt.rc('ytick', labelsize=15)
+        plt.rc('legend', fontsize=15)
+        plt.rc('figure', titlesize=22)
 
         f, (ax0, ax1) = plt.subplots(1, 2, figsize=(20,12))
         cm = confusion_matrix(target,prediction)
         self.plot_cm_ax(ax0, cm, normalize=False)
         self.plot_cm_ax(ax1, cm, normalize=True)
-        
+
 
         cm_files = os.listdir(save_dir)
         cm_files = [os.path.abspath(save_dir + f) for f in cm_files]
         if len(cm_files) >= self.max_to_keep:
             oldest_cm = min(cm_files, key=os.path.getctime)
             os.remove(oldest_cm)
-        
+
         plt.tight_layout()
         plt.savefig(save_path, format='png', dpi=250)
         plt.close()
@@ -359,10 +359,10 @@ class Network():
         iterator_dict = {self.filename_pl: tfrecords, self.batch_size_pl: size, self.epochs_pl: 1}
         sess.run(self.iterator_dataset.initializer, iterator_dict)
         handle = sess.run(self.iterator_dataset.string_handle())
-        
+
         iterator_dict = {self.handle_pl: handle}
         data, labels, lengths, ids = sess.run(self.next_element, feed_dict=iterator_dict)
-        
+
         feed_dict = {self.data_pl: data, self.target_pl: labels, self.length_pl: lengths, self.id_pl: ids, self.is_train:False}
         tensors = [self.err, self.loss, self.pred_index, self.targ_index, self.summary_op]
         err, loss, predictions, target, summary = sess.run(tensors, feed_dict)
@@ -373,8 +373,8 @@ class Network():
 
         return loss
 
-    def train(self, train_args, tfrecords_train, tfrecords_traindev, tfrecords_dev):
-        
+    def train(self, train_args, tfrecords_train, tfrecords_traindev):#, tfrecords_dev):
+
         tf.compat.v1.reset_default_graph()
         self.set_train_settings(**train_args)
         self.build_graph()
@@ -401,16 +401,16 @@ class Network():
                     sess.run(self.train_step, feed_dict)
 
                     if step%self.val_steps==0:
-                        args_dev = [sess, tfrecords_dev, self.writer_dev, self.plot_folder_dev, self.size_dev, step, 'Dev']
-                        args_traindev = [sess, tfrecords_traindev, self.writer_traindev, self.plot_folder_traindev, self.size_traindev, step, 'Traindev']
+                        # args_dev = [sess, tfrecords_dev, self.writer_dev, self.plot_folder_dev, self.size_dev, step, 'Dev']
+                        # args_traindev = [sess, tfrecords_traindev, self.writer_traindev, self.plot_folder_traindev, self.size_traindev, step, 'Traindev']
                         args_train = [sess, tfrecords_train, self.writer_train, self.plot_folder_train, self.size_train, step, 'Train']
-                        
-                        loss_dev = self.save_metrics(*args_dev)
-                        _ = self.save_metrics(*args_traindev)
-                        _ = self.save_metrics(*args_train)
 
-                        if loss_dev < self.best_loss:
-                            self.best_loss = loss_dev
+                        loss_train = self.save_metrics(*args_train)
+                        # _ = self.save_metrics(*args_traindev)
+                        # _ = self.save_metrics(*args_train)
+
+                        if loss_train < self.best_loss:
+                            self.best_loss = loss_train
                             save_path = self.model_dir + 'model.ckpt'
                             self.saver.save(sess, save_path, global_step=step)
 
@@ -419,8 +419,8 @@ class Network():
                     break
 
     def predict(self, tfrecords, model_name, metadata_train_path, batch_size, return_h=False, return_fc=False, return_p=False):
-        
-        tf.compat.v1.reset_default_graph()      
+
+        tf.compat.v1.reset_default_graph()
         self.load_train_settings(metadata_train_path)
         self.build_graph()
 
@@ -434,11 +434,11 @@ class Network():
 
             iterator_dict = {self.handle_pl: handle}
             data, labels, lengths, ids = sess.run(self.next_element, feed_dict=iterator_dict)
-            
+
             feed_dict = {self.data_pl: data, self.target_pl: labels, self.length_pl: lengths, self.id_pl: ids, self.is_train:False}
             tensors = [self.err, self.last_h, self.fc, self.pred_index, self.prediction]
             err, last_h, fc_output, pred_index, pred_probs = sess.run(tensors, feed_dict)
-            
+
             labels = np.argmax(labels, axis=-1)
             labels = [self.trans[i] for i in labels]
             pred_label = [self.trans[i] for i in pred_index]
@@ -447,13 +447,13 @@ class Network():
             predictions = {'ids': ids, 'labels': labels, 'pred_label': pred_label, 'pred_probs': pred_probs, 'last_h': last_h, 'fc_output': fc_output}
 
             if not return_h:
-                predictions.pop('last_h') 
+                predictions.pop('last_h')
 
             if not return_fc:
                 predictions.pop('fc_output')
 
             if not return_p:
-                predictions.pop('pred_probs') 
+                predictions.pop('pred_probs')
 
             print('Prediction accuracy: {:3.2f}%'.format(100 * (1-err)))
 

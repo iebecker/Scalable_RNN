@@ -10,6 +10,7 @@ def read(dir_, cls_, id_, lc_params):
     col_names: column names for each light curve. They must indicate
             [time, magnitude, errror]'''
 
+
     col_names= lc_params['usecols']
     # Read the dataframe for an object
     df_lc = pd.read_csv(dir_, **lc_params)
@@ -51,7 +52,7 @@ def process(cls_, _data_, w, s, w_time):
             matrices = np.concatenate((T, X), axis=1)
         else:
             matrices = np.asarray(X)
-    except Exception as e: 
+    except Exception as e:
         print(e)
         print(cls_,data_)
 
