@@ -13,40 +13,15 @@ import utils
 class Preprocesser():
     '''Class that implements functions prepare, read,
     transform and save the data'''
-    def __init__(self, file_train, save_dir='./',
-                 max_L=40000, min_L=500, min_N=0, max_N = 2000, w=4, s=2, w_time=True,
-                 num_cores=8, train_size = 0.70, val_size=0.10, test_size=0.2,
-                 lc_parameters = None, inference= False, inference_folder = None):
-
-        # Set inference mode
-        self.inference = inference
-        self.inference_folder = inference_folder
-        self.save_dir = save_dir
-
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
+    def __init__(self, max_L=40000, min_L=500, min_N=0, max_N = 2000, w=4, s=2
+            , w_time=True, num_cores=8, lc_parameters = None):
 
         # We already imposed a minimum number of poitns per light curve
         # Impose a minimum of points per light curve
-        if self.inference:
-            self.max_L = 1e6 #Arbitrary
-            self.min_L = 0
-            self.min_N = 0
-            self.max_N = 1e6 #Arbitrary
-        else:
-            self.max_L = max_L
-            self.min_L = min_L
-            self.max_N = max_N
-            self.min_N = min_N
-
-        # Dataset info
-        self.file_train = file_train
-        # self.file_dev = file_dev
-        self.read_datasets()
-
-        # Extract classes and the number of them
-        self.classes = list(set(self.data_train.Class))
-        self.num_classes = len(self.classes)
+        self.max_L = max_L
+        self.min_L = min_L
+        self.max_N = max_N
+        self.min_N = min_N
 
         # Container for the data
         self.Labels = []
@@ -59,19 +34,9 @@ class Preprocesser():
         self.w_time = w_time
         self.njobs = num_cores
 
-        # Dictionary to transform string labels to ints
-        self.trans = {c: n for c, n in zip(self.classes, range(self.num_classes))}
-        self.trans_inv = dict(zip(self.trans.values(), self.trans.keys()))
 
         # Parameters to read each light curve
         self.lc_parameters = lc_parameters
-
-        # Set the train/test/val sizes
-        self.train_size = train_size
-
-        self.test_size = test_size
-        self.val_size = val_size
-
 
         # Auxiliary functions to parallelize
         # Parallel does not work with class functions (for some reason)
@@ -79,11 +44,63 @@ class Preprocesser():
         self.__func_process = utils.process
         self.__func_serialize = utils.serialize
 
+    def set_execution_variables(self, file_train, save_dir
+                    , train_size, val_size, test_size
+                    , inference, inference_folder):
+
+        '''Defines paths and split information.
+        This function separates the object itself with the different
+        excecutions of the object.'''
+
+        # Set inference mode
+        self.inference = inference
+        self.inference_folder = inference_folder
+        self.save_dir = save_dir
+
+        if not os.path.exists(self.save_dir):
+            os.makedirs(self.save_dir)
+
+        self.default_split = True
+        # Dataset info
+        self.file_train = file_train
+
+        # Splits fractions
+        self.train_size = train_size
+        self.test_size = test_size
+        self.val_size = val_size
+
+        # Set the train/test/val sizes
+        # If train_size are files, with the same format as
+        #"file_train", use these to create the splits.
+        if( type(train_size)==str and type(test_size)==str and type(val_size)==str):
+            self.default_split = False
+            self.file_train = train_size
+            self.file_test = test_size
+            self.file_val = val_size
+
+        # Read the datasets to be used. Just one if default splits, three if custom splits.
+        self.read_datasets()
+
+        # Extract classes and the number of them
+        self.classes = list(set(self.data_train.Class))
+        self.num_classes = len(self.classes)
+
+        # Dictionary to transform string labels to ints
+        self.trans = {c: n for c, n in zip(self.classes, range(self.num_classes))}
+        self.trans_inv = dict(zip(self.trans.values(), self.trans.keys()))
+
+        # If in inference mode, override min,max_N, and min,max_L
+        if self.inference:
+            self.max_L = 1e9 #Arbitrary
+            self.min_L = 0
+            self.min_N = 0
+            self.max_N = 1e9 #Arbitrary
+
     def filter_train(self):
         '''Filter the objects to be read.
         First by imposing restriction to the number of data points.
         Second, by extracting a random sample of up uo max_L elements
-            per category.'''
+        per category.'''
         # Objects that fulfill the number of datapoints condition
         bol21 = self.data_train.N >=self.min_N
         bol22 = self.data_train.N <=self.max_N
@@ -118,65 +135,153 @@ class Preprocesser():
 
     def read_datasets(self):
         '''Read the dataset, extract the LCs information, with the class and ID.
-        Filter the specified number of LC per class, so it does not read everything '''
-        # Read stars Data
-        self.data_train = pd.read_csv(self.file_train, usecols=['ID', 'Address','Class','N'])
+        Filter the specified number of LC per class, so it does not read everything.
 
-        # Extract classes and the number of them
-        self.classes = list(set(self.data_train.Class))
-        self.num_classes = len(self.classes)
+        If default_split is False, each one of the folds is read separately.
+        No further filtering is done.'''
 
-        # Filter train according to number of observations and elements per class
-        self.filter_train()
+        if self.default_split:
+            # Read stars Data
+            self.data_train = pd.read_csv(self.file_train, usecols=['ID', 'Address','Class','N'])
 
+            # Extract classes and the number of them
+            self.classes = list(set(self.data_train.Class))
+            self.num_classes = len(self.classes)
 
+            # Filter train according to number of observations and elements per class
+            self.filter_train()
+        else:
+            self.data_train= pd.read_csv(self.file_train, usecols=['ID', 'Address','Class','N'])
+            self.data_test = pd.read_csv(self.file_test, usecols=['ID', 'Address','Class','N'])
+            self.data_val = pd.read_csv(self.file_val, usecols=['ID', 'Address','Class','N'])
 
-    def paralell_read(self):
-        '''Read the data using n_jobs. Store them in a dict where the classes
-        are keys.'''
+    def __parallel_read_util(self, _data_):
+        '''Reads un parallel light curves in _data_.'''
+        ext = Parallel(self.njobs)(delayed(self.__func_read)(address_, class_, id_, self.lc_parameters) for address_, class_, id_ in
+                                 tqdm(zip(_data_.Address, _data_.Class, _data_.ID)))
+        return ext
+
+    def __sort_lcs_util(self, read_lcs):
+        '''Create a dictionary, where each class is the key, the id and
+        light curve itself are stored in a list, as values.'''
+
+        # Create a dictionary by class
+        lcs = {c: [] for c in self.classes}
+        # For each class, light curve i[0] and the id i[2]
+        [lcs[i[1]].append([i[0],i[2]]) for i in read_lcs]
+        return lcs
+
+    def parallel_read_default(self):
+        '''Read the data using default splits and preprocessing.
+        Store all the lcs in a dict where the classes are keys.'''
 
         # Read the light curves in parallel
         print('Reading')
-        ext = Parallel(self.njobs)(delayed(self.__func_read)(address_, class_, id_, self.lc_parameters) for address_, class_, id_ in
-                                 tqdm(zip(self.data_train.Address, self.data_train.Class, self.data_train.ID)))
+        read_lcs = self.__parallel_read_util(self.data_train)
 
+        # ext = Parallel(self.njobs)(delayed(self.__func_read)(address_, class_, id_, self.lc_parameters) for address_, class_, id_ in
+        #                          tqdm(zip(self.data_train.Address, self.data_train.Class, self.data_train.ID)))
+        # Store the light curves by class and ID info.
+        self.lcs = self.__sort_lcs_util(read_lcs)
         # Create a dictionary by class
-        self.lcs = {c: [] for c in self.classes}
-        # For each class, light curve i[0] and the id i[2]
-        [self.lcs[i[1]].append([i[0],i[2]]) for i in ext]
+        # self.lcs = {c: [] for c in self.classes}
+        # # For each class, light curve i[0] and the id i[2]
+        # [self.lcs[i[1]].append([i[0],i[2]]) for i in read_lcs]
 
-    def paralell_process(self):
+    def parallel_read_custom(self):
+        '''Read the data using custom splits and preprocessing.
+        This do no applies any filter to the data.
+        Store all the lcs in a dictS where the classes are keys.
+        One dict per split. Only train test and val are used.'''
+
+        # Read the light curves in parallel
+        print('Reading Train')
+        read_lcs_train = self.__parallel_read_util(self.data_train)
+        print('Reading Test')
+        read_lcs_test = self.__parallel_read_util(self.data_test)
+        print('Reading Val')
+        read_lcs_val = self.__parallel_read_util(self.data_val)
+
+        # Store them
+        self.lcs_train = self.__sort_lcs_util(read_lcs_train)
+        self.lcs_test = self.__sort_lcs_util(read_lcs_test)
+        self.lcs_val = self.__sort_lcs_util(read_lcs_val)
+
+
+    def parallel_read(self):
+        '''Run parallel read using n_jobs threads, depending on the user choice.'''
+        if self.default_split:
+            self.parallel_read_default()
+        else:
+            self.parallel_read_custom()
+
+    def parallel_process(self):
         '''Extracts the data and transform it into matrix representation.'''
+        if self.default_split:
+            self.parallel_process_default()
+        else:
+            self.parallel_process_custom()
+
+    def parallel_process_custom(self):
+        '''Extracts the data into matrix representation, maintaininig the folds
+        defined by the user.'''
         print('Processing')
+        # Process the data
+        self.Labels_train, self.Matrices_train, self.IDs_train = self.__process_lcs_util(self.lcs_train)
+        self.Labels_test, self.Matrices_test, self.IDs_test = self.__process_lcs_util(self.lcs_test)
+        self.Labels_val, self.Matrices_val, self.IDs_val = self.__process_lcs_util(self.lcs_val)
+
+        # Shuffle the data
+        if not self.inference:
+            self.Labels_train, self.Matrices_train, self.IDs_train = self.__process_shuffle_util(self.Labels_train, self.Matrices_train, self.IDs_train)
+
+    def __process_shuffle_util(self, _labels_, _matrices_, _ids_):
+        '''Shuffles the data.'''
+
+        ind = np.arange(len(_labels_))
+        shuffle(ind)
+        # Aplly the shuffle dindices
+        _labels_ = _labels_[ind]
+        # self.Ns = self.Ns[self.ind]
+        _matrices_ = _matrices_[ind]
+        _ids_ = _ids_[ind]
+        return _labels_, _matrices_, _ids_
+
+    def __process_lcs_util(self, lcs):
+        '''Fucntion to process the lcs given lcs.'''
+        Labels = []
+        Matrices = []
+        IDs = []
         for c in self.classes:
-            sel = self.lcs[c]
+            sel = lcs[c]
             # Run the process function in parallel
-            self.processed = Parallel(self.njobs)(delayed(self.__func_process)(c, l, self.w, self.s, self.w_time) for l in tqdm(sel))
+            processed = Parallel(self.njobs)(delayed(self.__func_process)(c, l, self.w, self.s, self.w_time) for l in tqdm(sel))
 
             # Store in list the information.
             # The order is preserved, so an jth element in all lists will correspond to the same object
             # Change the class to a number, and store it into a list
-            [self.Labels.append(self.trans[i[0]]) for i in self.processed]
+            [Labels.append(self.trans[i[0]]) for i in processed]
             # Store the matrix representation into a list
-            [self.Matrices.append(i[1].astype(np.float32)) for i in self.processed]
+            [Matrices.append(i[1].astype(np.float32)) for i in processed]
             # Store the IDs into a list
-            [self.IDs.append(i[2]) for i in self.processed]
+            [IDs.append(i[2]) for i in processed]
 
         # Transform the data into matrices
-        self.Labels = np.array(self.Labels)
-        self.Matrices = np.array(self.Matrices)
-        self.IDs = np.array(self.IDs)
+        Labels = np.array(Labels)
+        Matrices = np.array(Matrices)
+        IDs = np.array(IDs)
+
+        return Labels, Matrices, IDs
+
+    def parallel_process_default(self):
+        print('Processing')
+
+        # Process the data
+        self.Labels, self.Matrices, self.IDs = self.__process_lcs_util(self.lcs)
 
         # Shuffle the data
-        # Create shuffled indices
         if not self.inference:
-            ind = np.arange(len(self.Labels))
-            shuffle(ind)
-            # Aplly the shuffle dindices
-            self.Labels = self.Labels[ind]
-            # self.Ns = self.Ns[self.ind]
-            self.Matrices = self.Matrices[ind]
-            self.IDs = self.IDs[ind]
+            self.Labels, self.Matrices, self.IDs = self.__process_shuffle_util(self.Labels, self.Matrices, self.IDs)
 
     def indices(self, train_ids, val_ids, test_ids):
         ind = range(len(self.IDs))
@@ -191,7 +296,7 @@ class Preprocesser():
     def cls_metadata(self, labels):
         keys, values = np.unique(labels, return_counts= True)
         values_norm = values/sum(values)
-        values_norm = ['({0:.3f} %)'.format(v) for v in values_norm]
+        values_norm = ['({0:.3f} %)'.format(100*v) for v in values_norm]
         values = [str(v1)+' '+v2 for v1,v2 in zip(values, values_norm)]
         keys = [self.trans_inv[k] for k in keys]
         hist = dict(zip(keys, values))
@@ -225,13 +330,25 @@ class Preprocesser():
         self.Labels_test = self.Labels[ind_test]
         self.IDs_test = self.IDs[ind_test]
 
-        splits_labels = [self.Labels_train, self.Labels_val, self.Labels_test]
+        splits_labels = [self.Labels_train, self.Labels_test, self.Labels_val]
+
+        # values = [self.cls_metadata(labels) for labels in splits_labels]
+        # keys = ['Train set', 'Test set', 'Val set']
+        # metadata = dict(zip(keys, values))
+        # metadata['Keys'] = self.trans_inv
+        # self.splits_metadata = metadata
+
+    def get_metadata_split(self):
+        '''Get the metadata of each splits.'''
+
+        splits_labels = [self.Labels_train, self.Labels_test, self.Labels_val]
 
         values = [self.cls_metadata(labels) for labels in splits_labels]
-        keys = ['Train set', 'Train-dev set', 'Dev set', 'Test set']
+        keys = ['Train set', 'Test set', 'Val set']
         metadata = dict(zip(keys, values))
         metadata['Keys'] = self.trans_inv
         self.splits_metadata = metadata
+
 
     def serialize_all(self):
         '''Serialize the data into TFRecords.'''
@@ -250,25 +367,6 @@ class Preprocesser():
                        self.Labels_test,
                        self.IDs_test,
                        self.save_dir+'Test.tfrecord')
-
-        # with open(self.save_dir+'Train.tfrecord', 'w') as f:
-        #     writer = tf.io.TFRecordWriter(f.name)
-        #     for i in range(len(self.IDs_train)):
-        #         ex = self.__func_serialize(self.Matrices_train[i], self.Labels_train[i],self.IDs_train[i])
-        #         writer.write(ex.SerializeToString())
-
-        # with open(self.save_dir+'Val.tfrecord', 'w') as f:
-        #     writer = tf.io.TFRecordWriter(f.name)
-        #     for i in range(len(self.IDs_val)):
-        #         ex = self.__func_serialize(self.Matrices_val[i], self.Labels_val[i], self.IDs_val[i])
-        #         writer.write(ex.SerializeToString())
-        #
-        # with open(self.save_dir+'Test.tfrecord', 'w') as f:
-        #     writer = tf.io.TFRecordWriter(f.name)
-        #     for i in range(len(self.IDs_test)):
-        #         ex = self.__func_serialize(self.Matrices_test[i], self.Labels_test[i], self.IDs_test[i])
-        #         writer.write(ex.SerializeToString())
-
 
     def serialize_inference(self, save_path=None):
         '''Serialize data for inference.'''
@@ -290,31 +388,40 @@ class Preprocesser():
 
     def write_metadata_process(self):
         '''Write metadata into a file.'''
-        metadata = {}
-        metadata['Includes time'] = self.w_time
-        metadata['w'] = self.w
-        metadata['s'] = self.s
-        metadata['Max per class'] = self.max_L
-        metadata['Min per class'] = self.min_L
-        metadata['Max points per lc'] = self.max_N
-        metadata['Min points per lc'] = self.min_N
-        metadata['Numer of classes'] = self.num_classes
-        metadata['Classes Info'] = self.splits_metadata
+        self.metadata = {}
+        self.metadata['Includes time'] = self.w_time
+        self.metadata['w'] = self.w
+        self.metadata['s'] = self.s
+        self.metadata['Max per class'] = self.max_L
+        self.metadata['Min per class'] = self.min_L
+        self.metadata['Max points per lc'] = self.max_N
+        self.metadata['Min points per lc'] = self.min_N
+        self.metadata['Numer of classes'] = self.num_classes
+        self.metadata['Classes Info'] = self.splits_metadata
 
         path = self.save_dir+'metadata_preprocess.json'
         with open(path, 'w') as fp:
-            json.dump(metadata, fp)
+            json.dump(self.metadata, fp)
         # Save the light curve parameters for the pandas call
         np.savez(self.save_dir+'lc_parameters',lc_parameters = self.lc_parameters)
 
-    def prepare(self, filename=None):
-        self.paralell_read()
-        self.paralell_process()
-        self.split_train()
+    def prepare(self, file_train, save_dir
+                , train_size = 0.70, val_size=0.10, test_size=0.2
+                , inference= False, inference_folder = None):
+
+        self.set_execution_variables(file_train, save_dir
+                        , train_size, val_size, test_size
+                        , inference, inference_folder)
+        self.parallel_read()
+        self.parallel_process()
+        # Split only if default split is True
+        if self.default_split:
+            self.split_train()
+        self.get_metadata_split()
         self.serialize_all()
         self.write_metadata_process()
 
     def prepare_inference(self, save_path=None):
-        self.paralell_read()
-        self.paralell_process()
+        self.parallel_read()
+        self.parallel_process()
         self.serialize_inference(save_path)
