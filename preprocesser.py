@@ -257,19 +257,21 @@ class Preprocesser():
             # Run the process function in parallel
             processed = Parallel(self.njobs)(delayed(self.__func_process)(c, l, self.w, self.s, self.w_time) for l in tqdm(sel))
 
+            _Labels, _Matrices, _IDs = list(zip(*processed))
             # Store in list the information.
             # The order is preserved, so an jth element in all lists will correspond to the same object
             # Change the class to a number, and store it into a list
-            [Labels.append(self.trans[i[0]]) for i in processed]
+            _Labels = [self.trans[i] for i in _Labels]
             # Store the matrix representation into a list
-            [Matrices.append(i[1].astype(np.float32)) for i in processed]
+            _Matrices = [i.astype(np.float32) for i in _Matrices]
             # Store the IDs into a list
-            [IDs.append(i[2]) for i in processed]
+            Labels.append(_Labels)
+            Matrices.append(_Matrices)
+            IDs.append(_IDs)
 
-        # Transform the data into matrices
-        Labels = np.array(Labels)
-        Matrices = np.array(Matrices)
-        IDs = np.array(IDs)
+        Labels = np.concatenate(Labels, axis=0)
+        Matrices = np.concatenate(Matrices, axis=0)
+        IDs = np.concatenate(IDs, axis=0)
 
         return Labels, Matrices, IDs
 

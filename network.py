@@ -2,6 +2,7 @@ import json
 import itertools
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import os
 from sklearn.metrics import confusion_matrix
 import tensorflow as tf
@@ -9,7 +10,6 @@ import tensorflow as tf
 class Network():
 
     def load_preprocess_data(self, path):
-
         with open(path) as f:
             metadata = json.load(f)
             self.w_time = metadata['Includes time']
@@ -19,9 +19,8 @@ class Network():
                 self.window = int(metadata['w'])
             self.num_classes= metadata['Numer of classes']
             self.size_train = int(metadata['Classes Info']['Train set']['Total'])
-            self.size_traindev = int(metadata['Classes Info']['Train-dev set']['Total'])
-            # self.size_dev = int(metadata['Classes Info']['Dev set']['Total'])
             self.size_test = int(metadata['Classes Info']['Test set']['Total'])
+            self.size_val = int(metadata['Classes Info']['Val set']['Total'])
             trans = metadata['Classes Info']['Keys']
             keys = [int(k) for k in trans.keys()]
             self.trans = dict(zip(keys, trans.values()))
@@ -47,13 +46,12 @@ class Network():
 
         log_folder = save_dir + 'Logs/'
         self.log_folder_train = log_folder + 'train/'
-        self.log_folder_traindev = log_folder + 'traindev/'
-        # self.log_folder_dev = log_folder + 'dev/'
+        self.log_folder_val = log_folder + 'val/'
 
         plot_folder = save_dir + 'Plots/'
         self.plot_folder_train = plot_folder + 'train/'
-        self.plot_folder_traindev = plot_folder + 'traindev/'
-        # self.plot_folder_dev = plot_folder + 'dev/'
+        self.plot_folder_val = plot_folder + 'val/'
+
 
         self.model_dir = save_dir + 'Model/'
 
@@ -120,7 +118,7 @@ class Network():
             kernel_initializer=glorot,
             bias_initializer=xavier
             )
-        gru_cell = tf.contrib.rnn.DropoutWrapper(gru_cell, output_keep_prob=1.0 - self.dropout)
+        # gru_cell = tf.contrib.rnn.DropoutWrapper(gru_cell, output_keep_prob=1.0 - self.dropout)
 
         return gru_cell
 
@@ -282,7 +280,7 @@ class Network():
     def add_writers(self):
         graph = tf.compat.v1.get_default_graph()
         self.writer_train = tf.compat.v1.summary.FileWriter(self.log_folder_train, graph, flush_secs=30)
-        self.writer_traindev = tf.compat.v1.summary.FileWriter(self.log_folder_traindev, graph, flush_secs=30)
+        self.writer_val = tf.compat.v1.summary.FileWriter(self.log_folder_val, graph, flush_secs=30)
         # self.writer_dev = tf.compat.v1.summary.FileWriter(self.log_folder_dev, graph, flush_secs=30)
 
     def add_saver(self):
@@ -373,7 +371,7 @@ class Network():
 
         return loss
 
-    def train(self, train_args, tfrecords_train, tfrecords_traindev):#, tfrecords_dev):
+    def train(self, train_args, tfrecords_train, tfrecords_val):#, tfrecords_dev):
 
         tf.compat.v1.reset_default_graph()
         self.set_train_settings(**train_args)
@@ -401,21 +399,19 @@ class Network():
                     sess.run(self.train_step, feed_dict)
 
                     if step%self.val_steps==0:
-                        # args_dev = [sess, tfrecords_dev, self.writer_dev, self.plot_folder_dev, self.size_dev, step, 'Dev']
-                        # args_traindev = [sess, tfrecords_traindev, self.writer_traindev, self.plot_folder_traindev, self.size_traindev, step, 'Traindev']
                         args_train = [sess, tfrecords_train, self.writer_train, self.plot_folder_train, self.size_train, step, 'Train']
+                        args_val = [sess, tfrecords_val, self.writer_val, self.plot_folder_val, self.size_val, step, 'Val']
 
                         loss_train = self.save_metrics(*args_train)
-                        # _ = self.save_metrics(*args_traindev)
-                        # _ = self.save_metrics(*args_train)
+                        loss_val = self.save_metrics(*args_val)
 
-                        if loss_train < self.best_loss:
-                            self.best_loss = loss_train
+                        if loss_val < self.best_loss:
+                            self.best_loss = loss_val
                             save_path = self.model_dir + 'model.ckpt'
                             self.saver.save(sess, save_path, global_step=step)
 
                 except tf.errors.OutOfRangeError:
-                    print('Train ended')
+                    print('Training ended')
                     break
 
     def predict(self, tfrecords, model_name, metadata_train_path, batch_size, return_h=False, return_fc=False, return_p=False):
@@ -455,6 +451,7 @@ class Network():
             if not return_p:
                 predictions.pop('pred_probs')
 
+            self.predictions = pd.DataFrame(predictions)
             print('Prediction accuracy: {:3.2f}%'.format(100 * (1-err)))
 
-            return predictions
+            return self.predictions
