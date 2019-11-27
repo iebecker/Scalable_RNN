@@ -96,41 +96,41 @@ class Preprocesser():
             self.min_N = 0
             self.max_N = 1e9 #Arbitrary
 
-    def filter_train(self):
-        '''Filter the objects to be read.
-        First by imposing restriction to the number of data points.
-        Second, by extracting a random sample of up uo max_L elements
-        per category.'''
-        # Objects that fulfill the number of datapoints condition
-        bol21 = self.data_train.N >=self.min_N
-        bol22 = self.data_train.N <=self.max_N
-        bol2 = np.logical_and(bol21,bol22)
-        # Leave up_to N_max objects per class
-        dfs = []
-        for i in self.classes.copy():
-            # Objects of the class
-            bol1 = self.data_train.Class == i
-            # Both conditions
-            bol = np.logical_and(bol1,bol2)
-            sel = self.data_train[bol]
+        def filter_train(self):
+            '''Filter the objects to be read.
+            First by imposing restriction to the number of data points.
+            Second, by extracting a random sample of up uo max_L elements
+            per category.'''
+            # Objects that fulfill the number of datapoints condition
+            bol21 = self.data_train.N >=self.min_N
+            bol22 = self.data_train.N <=self.max_N
+            bol2 = np.logical_and(bol21,bol22)
+            # Leave up_to N_max objects per class
+            dfs = []
+            for i in self.classes.copy():
+                # Objects of the class
+                bol1 = self.data_train.Class == i
+                # Both conditions
+                bol = np.logical_and(bol1,bol2)
+                sel = self.data_train[bol]
 
-            # Limit the minimum number of light curves
-            if sel.shape[0] < self.min_L:
-                # Update the classes
-                self.classes.remove(i)
-                self.num_classes = len(self.classes)
-                # Skip the class
-                continue
+                # Limit the minimum number of light curves
+                if sel.shape[0] < self.min_L:
+                    # Update the classes
+                    self.classes.remove(i)
+                    self.num_classes = len(self.classes)
+                    # Skip the class
+                    continue
 
-            # Random sample of objects, not done in inference
-            if not self.inference:
-                # Return the min among the number of objects and max_L
-                num = min(self.max_L, sel.shape[0])
-                # Get a random sample
-                sel = sel.sample(num, replace=False, axis=0)
-            dfs.append(sel)
-        # Join the dataframes of each class together
-        self.data_train = pd.concat(dfs)
+                # Random sample of objects, not done in inference
+                if not self.inference:
+                    # Return the min among the number of objects and max_L
+                    num = min(self.max_L, sel.shape[0])
+                    # Get a random sample
+                    sel = sel.sample(num, replace=False, axis=0)
+                dfs.append(sel)
+            # Join the dataframes of each class together
+            self.data_train = pd.concat(dfs)
 
 
     def read_datasets(self):
