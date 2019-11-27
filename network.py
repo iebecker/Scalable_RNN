@@ -174,7 +174,7 @@ class Network():
 
     def add_input_iterators(self):
         # with tf.device('/cpu:0'), tf.name_scope('Iterators'):
-            with tf.name_scope('Iterators'):
+        with tf.name_scope('Iterators'):
 
             self.filename_pl = tf.compat.v1.placeholder(tf.string, shape=[None],name='Filename')
             self.epochs_pl = tf.compat.v1.placeholder(tf.int64, shape=[],name='Epochs')
