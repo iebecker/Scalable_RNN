@@ -173,7 +173,8 @@ class Network():
         return lc, lbl, N, ID_
 
     def add_input_iterators(self):
-        with tf.device('/cpu:0'), tf.name_scope('Iterators'):
+        # with tf.device('/cpu:0'), tf.name_scope('Iterators'):
+            with tf.name_scope('Iterators'):
 
             self.filename_pl = tf.compat.v1.placeholder(tf.string, shape=[None],name='Filename')
             self.epochs_pl = tf.compat.v1.placeholder(tf.int64, shape=[],name='Epochs')
@@ -190,7 +191,8 @@ class Network():
             self.iterator_dataset = tf.compat.v1.data.make_initializable_iterator(dataset)
 
             dataset = dataset.shuffle(buffer_size=self.buffer_size)
-            dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+            dataset = dataset.prefetch(buffer_size=self.buffer_size)
+
             self.iterator_train = tf.compat.v1.data.make_initializable_iterator(dataset)
 
             self.iterator = tf.compat.v1.data.Iterator.from_string_handle(
