@@ -46,7 +46,7 @@ class Preprocesser():
 
     def set_execution_variables(self, file_train, save_dir
                     , train_size, val_size, test_size
-                    , inference, inference_folder):
+                    , inference):
 
         '''Defines paths and split information.
         This function separates the object itself with the different
@@ -54,11 +54,17 @@ class Preprocesser():
 
         # Set inference mode
         self.inference = inference
-        self.inference_folder = inference_folder
         self.save_dir = save_dir
 
         if not os.path.exists(self.save_dir):
             os.makedirs(self.save_dir)
+
+        # If in inference mode, override min,max_N, and min,max_L
+        if self.inference:
+            self.max_L = 1e9 #Arbitrary
+            self.min_L = 0
+            self.min_N = 0
+            self.max_N = 1e9 #Arbitrary
 
         self.default_split = True
         # Dataset info
@@ -71,7 +77,7 @@ class Preprocesser():
 
         # Set the train/test/val sizes
         # If train_size are files, with the same format as
-        #"file_train", use these to create the splits.
+        #'file_train', use these to create the splits.
         if( type(train_size)==str and type(test_size)==str and type(val_size)==str):
             self.default_split = False
             self.file_train = train_size
@@ -89,48 +95,42 @@ class Preprocesser():
         self.trans = {c: n for c, n in zip(self.classes, range(self.num_classes))}
         self.trans_inv = dict(zip(self.trans.values(), self.trans.keys()))
 
-        # If in inference mode, override min,max_N, and min,max_L
-        if self.inference:
-            self.max_L = 1e9 #Arbitrary
-            self.min_L = 0
-            self.min_N = 0
-            self.max_N = 1e9 #Arbitrary
 
-        def filter_train(self):
-            '''Filter the objects to be read.
-            First by imposing restriction to the number of data points.
-            Second, by extracting a random sample of up uo max_L elements
-            per category.'''
-            # Objects that fulfill the number of datapoints condition
-            bol21 = self.data_train.N >=self.min_N
-            bol22 = self.data_train.N <=self.max_N
-            bol2 = np.logical_and(bol21,bol22)
-            # Leave up_to N_max objects per class
-            dfs = []
-            for i in self.classes.copy():
-                # Objects of the class
-                bol1 = self.data_train.Class == i
-                # Both conditions
-                bol = np.logical_and(bol1,bol2)
-                sel = self.data_train[bol]
+    def filter_train(self):
+        '''Filter the objects to be read.
+        First by imposing restriction to the number of data points.
+        Second, by extracting a random sample of up uo max_L elements
+        per category.'''
+        # Objects that fulfill the number of datapoints condition
+        bol21 = self.data_train.N >=self.min_N
+        bol22 = self.data_train.N <=self.max_N
+        bol2 = np.logical_and(bol21,bol22)
+        # Leave up_to N_max objects per class
+        dfs = []
+        for i in self.classes.copy():
+            # Objects of the class
+            bol1 = self.data_train.Class == i
+            # Both conditions
+            bol = np.logical_and(bol1,bol2)
+            sel = self.data_train[bol]
 
-                # Limit the minimum number of light curves
-                if sel.shape[0] < self.min_L:
-                    # Update the classes
-                    self.classes.remove(i)
-                    self.num_classes = len(self.classes)
-                    # Skip the class
-                    continue
+            # Limit the minimum number of light curves
+            if sel.shape[0] < self.min_L:
+                # Update the classes
+                self.classes.remove(i)
+                self.num_classes = len(self.classes)
+                # Skip the class
+                continue
 
-                # Random sample of objects, not done in inference
-                if not self.inference:
-                    # Return the min among the number of objects and max_L
-                    num = min(self.max_L, sel.shape[0])
-                    # Get a random sample
-                    sel = sel.sample(num, replace=False, axis=0)
-                dfs.append(sel)
-            # Join the dataframes of each class together
-            self.data_train = pd.concat(dfs)
+            # Random sample of objects, not done in inference
+            if not self.inference:
+                # Return the min among the number of objects and max_L
+                num = min(self.max_L, sel.shape[0])
+                # Get a random sample
+                sel = sel.sample(num, replace=False, axis=0)
+            dfs.append(sel)
+        # Join the dataframes of each class together
+        self.data_train = pd.concat(dfs)
 
 
     def read_datasets(self):
@@ -371,13 +371,10 @@ class Preprocesser():
                        self.save_dir+'Test.tfrecord')
 
     def serialize_inference(self, save_path=None):
-        '''Serialize data for inference.'''
-        if save_path is None:
-            save_path = self.inference_folder+'Inference.tfrecord'
 
-        self.serialize(self.Matrices[i],
-                        self.Labels[i],
-                        self.IDs[i],
+        self.serialize(self.Matrices,
+                        self.Labels,
+                        self.IDs,
                         save_path)
 
     def serialize(self, Matrices, Labels, IDs, save_path):
@@ -409,11 +406,11 @@ class Preprocesser():
 
     def prepare(self, file_train, save_dir
                 , train_size = 0.70, val_size=0.10, test_size=0.2
-                , inference= False, inference_folder = None):
+                , inference= False):
 
         self.set_execution_variables(file_train, save_dir
                         , train_size, val_size, test_size
-                        , inference, inference_folder)
+                        , inference)
         self.parallel_read()
         self.parallel_process()
         # Split only if default split is True
@@ -423,7 +420,22 @@ class Preprocesser():
         self.serialize_all()
         self.write_metadata_process()
 
-    def prepare_inference(self, save_path=None):
+    def prepare_inference(self, file_train, save_dir, trans, save_path=None):
+        # self.set_execution_variables(file_train, save_dir, train_size=None, val_size=None, test_size=None, inference=True)
+        self.file_train = file_train
+        self.max_L = 1e9 #Arbitrary
+        self.min_L = 0
+        self.min_N = 0
+        self.max_N = 1e9 #Arbitrary
+        self.default_split = True
+        self.inference = True
+
+        self.data_train = pd.read_csv(self.file_train, usecols=['ID', 'Address','Class','N'])
+        self.trans = trans
+        self.trans_inv = dict(zip(self.trans.values(), self.trans.keys()))
+        self.classes = list(set(self.trans.keys()))
+        self.num_classes = len(self.classes)
+
         self.parallel_read()
         self.parallel_process()
         self.serialize_inference(save_path)

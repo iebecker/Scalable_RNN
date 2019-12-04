@@ -136,7 +136,7 @@ class Network():
         '''Function to create a fully connected layer.'''
         hidden_layer = tf.contrib.layers.fully_connected(
             inputs=prev_layer,
-            num_outputs=self.fc_units)#normalizer_fn=tf.contrib.layers.batch_norm)
+            num_outputs=self.fc_units)
         dropout_layer = tf.layers.dropout(
             inputs=hidden_layer,
             rate=self.dropout,
@@ -476,20 +476,24 @@ class Network():
                     _preds = np.append(_preds, pred_probs.argmax(1))
                     _labels= np.append(_labels, labels.argmax(1))
                     _ids = np.append(_ids, ids)
-                    _last_h = np.append(_last_h, last_h)
-                    _fc_out = np.append(_fc_out, fc_output)
-                    _probs = np.append(_probs, pred_probs)
+                    _last_h = np.append(_last_h, last_h, axis=0)
+                    _fc_out = np.append(_fc_out, fc_output, axis=0)
+                    _probs = np.append(_probs, pred_probs, axis=0)
                 except tf.errors.OutOfRangeError:
                     # Compute errors
                     bol = _preds!=_labels
                     err = np.sum(bol)/bol.shape[0]
-                    labels = [self.trans[i] for i in _labels]
-                    pred_label = [self.trans[i] for i in _preds]
-                    pred_probs = np.max(pred_probs, axis=-1)
+                    labels = np.array([self.trans[i] for i in _labels])
+                    pred_label = np.array([self.trans[i] for i in _preds])
+                    pred_probs = np.max(_probs, axis=-1)
                     break
 
+            _ids = np.hstack(_ids)
+
+            print(_ids.shape, labels.shape, pred_label.shape, pred_probs.shape, _last_h.shape, _fc_out.shape)
+            
             self.predictions = {'ids': _ids, 'labels': labels, 'pred_label': pred_label, 'pred_probs': pred_probs
-                            , 'last_h': last_h, 'fc_output': fc_output}
+                            , 'last_h': _last_h, 'fc_output': _fc_out}
 
             if not return_h:
                 self.predictions.pop('last_h')
@@ -499,9 +503,5 @@ class Network():
 
             if not return_p:
                 self.predictions.pop('pred_probs')
-
-            self.predictions = pd.DataFrame(self.predictions)
-            self.predictions.to_csv('Predictions.dat',index=False, index_label=False)
-            print('Prediction accuracy: {:3.2f}%'.format(100 * (1-err)))
 
             return self.predictions
