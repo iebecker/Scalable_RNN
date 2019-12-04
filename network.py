@@ -228,12 +228,15 @@ class Network():
                 cell_weights.append(tf.compat.v1.summary.histogram(name, w))
 
         with tf.compat.v1.variable_scope('FC_'):
-            self.fc = None
-            for i in range(self.fc_layers):
-                if self.fc is None:
-                    self.fc = self.add_FC(self.last_h, i)
-                else:
-                    self.fc = self.add_FC(self.fc, i)
+            if self.fc_layers>0:
+                self.fc = None
+                for i in range(self.fc_layers):
+                    if self.fc is None:
+                        self.fc = self.add_FC(self.last_h, i)
+                    else:
+                        self.fc = self.add_FC(self.fc, i)
+            else:
+                self.fc = self.last_h
 
         with tf.compat.v1.variable_scope('Softmax'):
             if self.fc_layers > 0:
