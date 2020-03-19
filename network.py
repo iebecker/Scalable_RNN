@@ -398,7 +398,6 @@ class Network():
                 writer.add_summary(summary, step)
                 writer.flush()
 
-                # self.plot_cm(_labels, _preds, plot_folder, step)
                 return Loss/bol.shape[0]
 
     def train(self, train_args, tfrecords_train, tfrecords_val):#, tfrecords_dev):
@@ -493,10 +492,8 @@ class Network():
 
             _ids = np.hstack(_ids)
 
-            print(_ids.shape, labels.shape, pred_label.shape, pred_probs.shape, _last_h.shape, _fc_out.shape)
-            
             self.predictions = {'ids': _ids, 'labels': labels, 'pred_label': pred_label, 'pred_probs': pred_probs
-                            , 'last_h': _last_h, 'fc_output': _fc_out}
+                            , 'last_h': [_last_h], 'fc_output': _fc_out}
 
             if not return_h:
                 self.predictions.pop('last_h')
