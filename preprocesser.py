@@ -142,7 +142,7 @@ class Preprocesser():
 
         if self.default_split:
             # Read stars Data
-            self.data_train = pd.read_csv(self.file_train, usecols=['ID', 'Address','Class','N'])
+            self.data_train = pd.read_csv(self.file_train, usecols=['ID', 'Path','Class','N'])
 
             # Extract classes and the number of them
             self.classes = list(set(self.data_train.Class))
@@ -151,14 +151,14 @@ class Preprocesser():
             # Filter train according to number of observations and elements per class
             self.filter_train()
         else:
-            self.data_train= pd.read_csv(self.file_train, usecols=['ID', 'Address','Class','N'])
-            self.data_test = pd.read_csv(self.file_test, usecols=['ID', 'Address','Class','N'])
-            self.data_val = pd.read_csv(self.file_val, usecols=['ID', 'Address','Class','N'])
+            self.data_train= pd.read_csv(self.file_train, usecols=['ID', 'Path','Class','N'])
+            self.data_test = pd.read_csv(self.file_test, usecols=['ID', 'Path','Class','N'])
+            self.data_val = pd.read_csv(self.file_val, usecols=['ID', 'Path','Class','N'])
 
     def __parallel_read_util(self, _data_):
         '''Reads un parallel light curves in _data_.'''
         ext = Parallel(self.njobs)(delayed(self.__func_read)(address_, class_, id_, self.lc_parameters) for address_, class_, id_ in
-                                 tqdm(zip(_data_.Address, _data_.Class, _data_.ID)))
+                                 tqdm(zip(_data_.Path, _data_.Class, _data_.ID)))
         return ext
 
     def __sort_lcs_util(self, read_lcs):
@@ -178,15 +178,7 @@ class Preprocesser():
         # Read the light curves in parallel
         print('Reading')
         read_lcs = self.__parallel_read_util(self.data_train)
-
-        # ext = Parallel(self.njobs)(delayed(self.__func_read)(address_, class_, id_, self.lc_parameters) for address_, class_, id_ in
-        #                          tqdm(zip(self.data_train.Address, self.data_train.Class, self.data_train.ID)))
-        # Store the light curves by class and ID info.
         self.lcs = self.__sort_lcs_util(read_lcs)
-        # Create a dictionary by class
-        # self.lcs = {c: [] for c in self.classes}
-        # # For each class, light curve i[0] and the id i[2]
-        # [self.lcs[i[1]].append([i[0],i[2]]) for i in read_lcs]
 
     def parallel_read_custom(self):
         '''Read the data using custom splits and preprocessing.
@@ -254,6 +246,9 @@ class Preprocesser():
         IDs = []
         for c in self.classes:
             sel = lcs[c]
+            if len(sel) ==0:
+                continue
+
             # Run the process function in parallel
             processed = Parallel(self.njobs)(delayed(self.__func_process)(c, l, self.w, self.s, self.w_time) for l in tqdm(sel))
 
@@ -269,9 +264,15 @@ class Preprocesser():
             Matrices.append(_Matrices)
             IDs.append(_IDs)
 
-        Labels = np.concatenate(Labels, axis=0)
-        Matrices = np.concatenate(Matrices, axis=0)
-        IDs = np.concatenate(IDs, axis=0)
+
+        # Concatenate the elements
+        Labels = [j for i in Labels for j in i]
+        Matrices= [j for i in Matrices for j in i]
+        IDs = [j for i in IDs for j in i]
+
+        Labels = np.array(Labels)
+        Matrices = np.array(Matrices)
+        IDs = np.array(IDs)
 
         return Labels, Matrices, IDs
 
@@ -334,11 +335,6 @@ class Preprocesser():
 
         splits_labels = [self.Labels_train, self.Labels_test, self.Labels_val]
 
-        # values = [self.cls_metadata(labels) for labels in splits_labels]
-        # keys = ['Train set', 'Test set', 'Val set']
-        # metadata = dict(zip(keys, values))
-        # metadata['Keys'] = self.trans_inv
-        # self.splits_metadata = metadata
 
     def get_metadata_split(self):
         '''Get the metadata of each splits.'''
@@ -348,9 +344,8 @@ class Preprocesser():
         values = [self.cls_metadata(labels) for labels in splits_labels]
         keys = ['Train set', 'Test set', 'Val set']
         metadata = dict(zip(keys, values))
-        metadata['Keys'] = self.trans_inv
+        metadata['Keys'] = self.trans
         self.splits_metadata = metadata
-
 
     def serialize_all(self):
         '''Serialize the data into TFRecords.'''
@@ -401,6 +396,7 @@ class Preprocesser():
         path = self.save_dir+'metadata_preprocess.json'
         with open(path, 'w') as fp:
             json.dump(self.metadata, fp)
+
         # Save the light curve parameters for the pandas call
         np.savez(self.save_dir+'lc_parameters',lc_parameters = self.lc_parameters)
 
@@ -421,7 +417,6 @@ class Preprocesser():
         self.write_metadata_process()
 
     def prepare_inference(self, file_train, save_dir, trans, save_path=None):
-        # self.set_execution_variables(file_train, save_dir, train_size=None, val_size=None, test_size=None, inference=True)
         self.file_train = file_train
         self.max_L = 1e9 #Arbitrary
         self.min_L = 0
@@ -430,9 +425,11 @@ class Preprocesser():
         self.default_split = True
         self.inference = True
 
-        self.data_train = pd.read_csv(self.file_train, usecols=['ID', 'Address','Class','N'])
+        self.data_train = pd.read_csv(self.file_train, usecols=['ID', 'Path','Class','N'])
         self.trans = trans
-        self.trans_inv = dict(zip(self.trans.values(), self.trans.keys()))
+        # JSON change the dtype of the keys
+        # self.trans = {int(i):self.trans[i] for i in self.trans.keys()}
+        self.trans_inv  = dict(zip(self.trans.values(), self.trans.keys()))
         self.classes = list(set(self.trans.keys()))
         self.num_classes = len(self.classes)
 
