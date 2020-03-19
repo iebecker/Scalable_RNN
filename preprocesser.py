@@ -45,26 +45,26 @@ class Preprocesser():
         self.__func_serialize = utils.serialize
 
     def set_execution_variables(self, file_train, save_dir
-                    , train_size, val_size, test_size
-                    , inference):
+                    , train_size, val_size, test_size):
+                    # , inference):
 
         '''Defines paths and split information.
         This function separates the object itself with the different
         excecutions of the object.'''
 
         # Set inference mode
-        self.inference = inference
+        # self.inference = inference
         self.save_dir = save_dir
 
         if not os.path.exists(self.save_dir):
             os.makedirs(self.save_dir)
 
         # If in inference mode, override min,max_N, and min,max_L
-        if self.inference:
-            self.max_L = 1e9 #Arbitrary
-            self.min_L = 0
-            self.min_N = 0
-            self.max_N = 1e9 #Arbitrary
+        # if self.inference:
+        #     self.max_L = 1e9 #Arbitrary
+        #     self.min_L = 0
+        #     self.min_N = 0
+        #     self.max_N = 1e9 #Arbitrary
 
         self.default_split = True
         # Dataset info
@@ -123,11 +123,11 @@ class Preprocesser():
                 continue
 
             # Random sample of objects, not done in inference
-            if not self.inference:
-                # Return the min among the number of objects and max_L
-                num = min(self.max_L, sel.shape[0])
-                # Get a random sample
-                sel = sel.sample(num, replace=False, axis=0)
+            # if not self.inference:
+            # Return the min among the number of objects and max_L
+            num = min(self.max_L, sel.shape[0])
+            # Get a random sample
+            sel = sel.sample(num, replace=False, axis=0)
             dfs.append(sel)
         # Join the dataframes of each class together
         self.data_train = pd.concat(dfs)
@@ -283,8 +283,8 @@ class Preprocesser():
         self.Labels, self.Matrices, self.IDs = self.__process_lcs_util(self.lcs)
 
         # Shuffle the data
-        if not self.inference:
-            self.Labels, self.Matrices, self.IDs = self.__process_shuffle_util(self.Labels, self.Matrices, self.IDs)
+        # if not self.inference:
+        self.Labels, self.Matrices, self.IDs = self.__process_shuffle_util(self.Labels, self.Matrices, self.IDs)
 
     def indices(self, train_ids, val_ids, test_ids):
         ind = range(len(self.IDs))
@@ -401,12 +401,12 @@ class Preprocesser():
         np.savez(self.save_dir+'lc_parameters',lc_parameters = self.lc_parameters)
 
     def prepare(self, file_train, save_dir
-                , train_size = 0.70, val_size=0.10, test_size=0.2
-                , inference= False):
+                , train_size = 0.70, val_size=0.10, test_size=0.2):
+                # , inference= False):
 
         self.set_execution_variables(file_train, save_dir
-                        , train_size, val_size, test_size
-                        , inference)
+                        , train_size, val_size, test_size)
+                        # , inference)
         self.parallel_read()
         self.parallel_process()
         # Split only if default split is True
@@ -416,22 +416,32 @@ class Preprocesser():
         self.serialize_all()
         self.write_metadata_process()
 
-    def prepare_inference(self, file_train, save_dir, trans, save_path=None):
+
+    def load_preprocess_data(self, path):
+        with open(path) as f:
+            metadata = json.load(f)
+            self.w_time = metadata['Includes time']
+            self.w =metadata['w']
+            self.s =metadata['s']
+            self.num_classes= metadata['Numer of classes']
+            trans = metadata['Classes Info']['Keys']
+
+            # values = [int(k) for k in trans.values()]
+            self.trans = {k:int(trans[k]) for k in trans.keys()}
+
+    def prepare_inference(self, file_train, save_path, metadata_path):
         self.file_train = file_train
+        self.load_preprocess_data(metadata_path)
         self.max_L = 1e9 #Arbitrary
         self.min_L = 0
         self.min_N = 0
         self.max_N = 1e9 #Arbitrary
         self.default_split = True
-        self.inference = True
 
-        self.data_train = pd.read_csv(self.file_train, usecols=['ID', 'Path','Class','N'])
-        self.trans = trans
+        self.data_train = pd.read_csv(file_train, usecols=['ID', 'Path','Class','N'])
         # JSON change the dtype of the keys
-        # self.trans = {int(i):self.trans[i] for i in self.trans.keys()}
         self.trans_inv  = dict(zip(self.trans.values(), self.trans.keys()))
         self.classes = list(set(self.trans.keys()))
-        self.num_classes = len(self.classes)
 
         self.parallel_read()
         self.parallel_process()
