@@ -8,7 +8,6 @@ from sklearn.metrics import confusion_matrix
 import tensorflow as tf
 
 class Network():
-
     def load_preprocess_data(self, path):
         with open(path) as f:
             metadata = json.load(f)
@@ -60,6 +59,7 @@ class Network():
     def save_train_settings(self, save_dir):
 
         if not os.path.exists(save_dir):
+            print(save_dir)
             os.makedirs(save_dir)
 
         metadata = {}
@@ -136,26 +136,24 @@ class Network():
         '''Function to create a fully connected layer.'''
         hidden_layer = tf.contrib.layers.fully_connected(
             inputs=prev_layer,
-            num_outputs=self.fc_units,
-            normalizer_fn=tf.contrib.layers.batch_norm
-            )
+            num_outputs=self.fc_units)
         dropout_layer = tf.layers.dropout(
             inputs=hidden_layer,
             rate=self.dropout,
             training=self.is_train,
-            name='Dropout_'+str(i),noise_shape=None
+            name='Dropout_'+str(i), noise_shape=None
             )
         return dropout_layer
 
     def data_parser(self, serialized_example):
 
         contex_features_ = {
-            'N': tf.FixedLenFeature([], dtype=tf.int64),
-            'ID': tf.FixedLenFeature([],dtype=tf.string),
-            'Label': tf.FixedLenFeature([],dtype=tf.int64),
+            'N': tf.io.FixedLenFeature([], dtype=tf.int64),
+            'ID': tf.io.FixedLenFeature([],dtype=tf.string),
+            'Label': tf.io.FixedLenFeature([],dtype=tf.int64),
             }
-        sequence_features_={'LightCurve_1': tf.VarLenFeature( dtype=tf.float32)}
-        context_data, sequence_data = tf.parse_single_sequence_example(
+        sequence_features_={'LightCurve_1': tf.io.VarLenFeature( dtype=tf.float32)}
+        context_data, sequence_data = tf.io.parse_single_sequence_example(
             serialized=serialized_example,
             context_features=contex_features_,
             sequence_features=sequence_features_
@@ -174,31 +172,35 @@ class Network():
 
     def add_input_iterators(self):
         with tf.device('/cpu:0'), tf.name_scope('Iterators'):
-
             self.filename_pl = tf.compat.v1.placeholder(tf.string, shape=[None],name='Filename')
             self.epochs_pl = tf.compat.v1.placeholder(tf.int64, shape=[],name='Epochs')
             self.handle_pl = tf.compat.v1.placeholder(tf.string, shape=[],name='Handle')
 
             dataset = tf.data.TFRecordDataset(self.filename_pl)
-            dataset = dataset.repeat(count=self.epochs)
+            # Repeat epochs_pl times
+            dataset = dataset.repeat(count=self.epochs_pl)
+            # Deserialize and Parse
             dataset = dataset.map(self.data_parser, num_parallel_calls=self.num_cores)
 
+            self.dataset_train = dataset.shuffle(buffer_size=self.buffer_size)
+            self.dataset_train = self.dataset_train.padded_batch(self.batch_size, padded_shapes=([None,None],[self.num_classes],[],[])
+                                                ,drop_remainder=False).prefetch(1)
             #Pad the batch lc,lbl,N
-            self.batch_size_pl = tf.compat.v1.placeholder_with_default(self.batch_size, shape=None, name='batch_size')
-            batch_size_cast = tf.cast(self.batch_size_pl, dtype=tf.int64)
-            dataset = dataset.padded_batch(batch_size_cast, padded_shapes=([None,None],[self.num_classes],[],[]))
-            self.iterator_dataset = tf.compat.v1.data.make_initializable_iterator(dataset)
+            self.dataset_eval = dataset.padded_batch(self.batch_size, padded_shapes=([None,None],[self.num_classes],[],[])
+                                    ,drop_remainder=False).prefetch(1)
 
-            dataset = dataset.shuffle(buffer_size=self.buffer_size)
-            dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-            self.iterator_train = tf.compat.v1.data.make_initializable_iterator(dataset)
 
-            self.iterator = tf.compat.v1.data.Iterator.from_string_handle(
-                self.handle_pl,
-                tf.compat.v1.data.get_output_types(dataset),
-                tf.compat.v1.data.get_output_shapes(dataset)
-                )
-            self.next_element = self.iterator.get_next()
+            output_types = tf.compat.v1.data.get_output_types(self.dataset_train)
+            output_shapes = tf.compat.v1.data.get_output_shapes(self.dataset_train)
+            self.train_iterator = tf.compat.v1.data.Iterator.from_structure(output_types, output_shapes)
+            self.train_initializer = self.train_iterator.make_initializer(self.dataset_train)
+
+            self.eval_iterator = tf.compat.v1.data.make_initializable_iterator(self.dataset_eval)
+            self.eval_initializer = self.eval_iterator.initializer
+
+
+            feedable_iter = tf.compat.v1.data.Iterator.from_string_handle(self.handle_pl, output_types, output_shapes)
+            self.next_element = feedable_iter.get_next()
 
     def add_input_placeholders(self):
 
@@ -226,12 +228,15 @@ class Network():
                 cell_weights.append(tf.compat.v1.summary.histogram(name, w))
 
         with tf.compat.v1.variable_scope('FC_'):
-            self.fc = None
-            for i in range(self.fc_layers):
-                if self.fc is None:
-                    self.fc = self.add_FC(self.last_h, i)
-                else:
-                    self.fc = self.add_FC(self.fc, i)
+            if self.fc_layers>0:
+                self.fc = None
+                for i in range(self.fc_layers):
+                    if self.fc is None:
+                        self.fc = self.add_FC(self.last_h, i)
+                    else:
+                        self.fc = self.add_FC(self.fc, i)
+            else:
+                self.fc = self.last_h
 
         with tf.compat.v1.variable_scope('Softmax'):
             if self.fc_layers > 0:
@@ -277,11 +282,16 @@ class Network():
 
         self.summary_op = tf.compat.v1.summary.merge([err_summ, loss_summ, h, last_h_hist, cell_weights])
 
+        self.err_sum_ph = tf.compat.v1.placeholder(tf.float32, shape=[],name='Err_Sum')
+        self.loss_sum_ph = tf.compat.v1.placeholder(tf.float32, shape=[],name='Loss_Sum')
+        err_sum_ = tf.compat.v1.summary.scalar('Err_', self.err_sum_ph)
+        loss_sum_ = tf.compat.v1.summary.scalar('Loss_', self.loss_sum_ph)
+        self.summary_op_mod = tf.compat.v1.summary.merge([err_sum_, loss_sum_])
+
     def add_writers(self):
         graph = tf.compat.v1.get_default_graph()
         self.writer_train = tf.compat.v1.summary.FileWriter(self.log_folder_train, graph, flush_secs=30)
         self.writer_val = tf.compat.v1.summary.FileWriter(self.log_folder_val, graph, flush_secs=30)
-        # self.writer_dev = tf.compat.v1.summary.FileWriter(self.log_folder_dev, graph, flush_secs=30)
 
     def add_saver(self):
         self.saver = tf.compat.v1.train.Saver(max_to_keep=self.max_to_keep)
@@ -353,23 +363,42 @@ class Network():
         plt.savefig(save_path, format='png', dpi=250)
         plt.close()
 
-    def save_metrics(self, sess, tfrecords, writer, plot_folder, size, step, name):
-        iterator_dict = {self.filename_pl: tfrecords, self.batch_size_pl: size, self.epochs_pl: 1}
-        sess.run(self.iterator_dataset.initializer, iterator_dict)
-        handle = sess.run(self.iterator_dataset.string_handle())
+    def save_metrics(self, sess, tfrecords, writer, plot_folder, step, name):
+        # Initialize eval iterator
+        handle = sess.run(self.eval_iterator.string_handle())
+        iterator_dict = {self.filename_pl: tfrecords, self.epochs_pl: 1, self.handle_pl: handle}
+        sess.run(self.eval_initializer, iterator_dict)
 
-        iterator_dict = {self.handle_pl: handle}
-        data, labels, lengths, ids = sess.run(self.next_element, feed_dict=iterator_dict)
+        _preds = np.zeros(0)
+        _labels= np.zeros(0)
+        _ids = np.zeros(0,dtype=np.int64)
+        Loss = 0
+        tensors = [ self.loss, self.pred_index, self.targ_index]
+        while True:
+            try:
+                data, labels, lengths, ids = sess.run(self.next_element, feed_dict={self.handle_pl:handle})
+                feed_dict = {self.data_pl: data, self.target_pl: labels, self.length_pl: lengths
+                , self.id_pl: ids, self.is_train:False}
 
-        feed_dict = {self.data_pl: data, self.target_pl: labels, self.length_pl: lengths, self.id_pl: ids, self.is_train:False}
-        tensors = [self.err, self.loss, self.pred_index, self.targ_index, self.summary_op]
-        err, loss, predictions, target, summary = sess.run(tensors, feed_dict)
-        print('Prediction accuracy on {} set: {:3.2f}%'.format(name, 100 * (1-err)))
+                loss, predictions, target = sess.run(tensors, feed_dict)
 
-        writer.add_summary(summary, step)
-        self.plot_cm(target, predictions, plot_folder, step)
+                ### Acumulate results
+                Loss += loss*labels.shape[0]
+                _preds = np.append(_preds, predictions)
+                _labels= np.append(_labels, labels.argmax(1))
+                _ids = np.append(_ids, ids)
 
-        return loss
+            except tf.errors.OutOfRangeError:
+
+                bol = _preds!=_labels
+                err = np.sum(bol)/bol.shape[0]
+                print('Prediction accuracy on {} set: {:3.2f}%'.format(name, 100 * (1-err)))
+                # Add the summaries
+                summary = sess.run(self.summary_op_mod, feed_dict={self.err_sum_ph: err, self.loss_sum_ph: Loss/bol.shape[0]})
+                writer.add_summary(summary, step)
+                writer.flush()
+
+                return Loss/bol.shape[0]
 
     def train(self, train_args, tfrecords_train, tfrecords_val):#, tfrecords_dev):
 
@@ -385,36 +414,38 @@ class Network():
             sess.run(tf.compat.v1.global_variables_initializer())
             sess.run(tf.compat.v1.local_variables_initializer())
 
-            iterator_dict = {self.filename_pl: tfrecords_train}
-            sess.run(self.iterator_train.initializer, iterator_dict)
-            iterator_train_handle = sess.run(self.iterator_train.string_handle())
-            iterator_dict = {self.epochs_pl: self.epochs, self.handle_pl: iterator_train_handle}
+            # Initialize the training iterator
+            train_handle = sess.run(self.train_iterator.string_handle())
+            iterator_dict = {self.filename_pl: tfrecords_train, self.epochs_pl: self.epochs
+                            , self.handle_pl: train_handle}
+            sess.run(self.train_initializer, iterator_dict)
 
             while True:
                 try:
                     step = tf.compat.v1.train.global_step(sess, self.global_step)
-                    data, labels, lengths, ids = sess.run(self.next_element, feed_dict=iterator_dict)
 
-                    feed_dict = {self.data_pl: data, self.target_pl: labels, self.length_pl: lengths, self.id_pl: ids, self.is_train:True}
+                    data, labels, lengths, ids = sess.run(self.next_element, feed_dict={self.handle_pl:train_handle})
+
+                    feed_dict = {self.data_pl: data, self.target_pl: labels, self.length_pl: lengths
+                                , self.id_pl: ids, self.is_train:True, self.handle_pl:train_handle}
                     sess.run(self.train_step, feed_dict)
-
                     if step%self.val_steps==0:
-                        args_train = [sess, tfrecords_train, self.writer_train, self.plot_folder_train, self.size_train, step, 'Train']
-                        args_val = [sess, tfrecords_val, self.writer_val, self.plot_folder_val, self.size_val, step, 'Val']
-
+                        args_train = [sess, tfrecords_train, self.writer_train, self.plot_folder_train
+                        , step, 'Train']
+                        args_val = [sess, tfrecords_val, self.writer_val, self.plot_folder_val
+                        , step, 'Val']
                         loss_train = self.save_metrics(*args_train)
                         loss_val = self.save_metrics(*args_val)
-
-                        if loss_val < self.best_loss:
-                            self.best_loss = loss_val
-                            save_path = self.model_dir + 'model.ckpt'
-                            self.saver.save(sess, save_path, global_step=step)
+                        save_path = self.model_dir + 'model.ckpt'
+                        self.saver.save(sess, save_path, global_step=step)
 
                 except tf.errors.OutOfRangeError:
                     print('Training ended')
+                    self.writer_val.close()
+                    self.writer_train.close()
                     break
 
-    def predict(self, tfrecords, model_name, metadata_train_path, batch_size, return_h=False, return_fc=False, return_p=False):
+    def predict(self, tfrecords, model_name, metadata_train_path, return_h=False, return_fc=False, return_p=False):
 
         tf.compat.v1.reset_default_graph()
         self.load_train_settings(metadata_train_path)
@@ -424,34 +455,53 @@ class Network():
 
             self.saver.restore(sess, model_name)
 
-            iterator_dict = {self.filename_pl: tfrecords, self.batch_size_pl: batch_size, self.epochs_pl: 1}
-            sess.run(self.iterator_dataset.initializer, iterator_dict)
-            handle = sess.run(self.iterator_dataset.string_handle())
+            handle = sess.run(self.eval_iterator.string_handle())
+            iterator_dict = {self.filename_pl: tfrecords, self.epochs_pl: 1, self.handle_pl: handle}
+            sess.run(self.eval_initializer, iterator_dict)
 
-            iterator_dict = {self.handle_pl: handle}
-            data, labels, lengths, ids = sess.run(self.next_element, feed_dict=iterator_dict)
+            _preds = np.zeros(0)
+            _labels= np.zeros(0)
+            _ids = np.zeros(0,dtype=np.int64)
+            _last_h = np.zeros((0,self.size_hidden))
+            _fc_out = np.zeros((0,self.fc_units))
+            _probs =  np.zeros((0,self.num_classes))
+            tensors = [self.last_h, self.fc, self.prediction]
 
-            feed_dict = {self.data_pl: data, self.target_pl: labels, self.length_pl: lengths, self.id_pl: ids, self.is_train:False}
-            tensors = [self.err, self.last_h, self.fc, self.pred_index, self.prediction]
-            err, last_h, fc_output, pred_index, pred_probs = sess.run(tensors, feed_dict)
+            while True:
+                try:
+                    data, labels, lengths, ids = sess.run(self.next_element, feed_dict={self.handle_pl:handle})
+                    feed_dict = {self.data_pl: data, self.target_pl: labels, self.length_pl: lengths
+                    , self.id_pl: ids, self.is_train:False, self.handle_pl:handle}
+                    last_h, fc_output, pred_probs = sess.run(tensors, feed_dict)
 
-            labels = np.argmax(labels, axis=-1)
-            labels = [self.trans[i] for i in labels]
-            pred_label = [self.trans[i] for i in pred_index]
-            pred_probs = np.max(pred_probs, axis=-1)
+                    ### Acumulate results
+                    _preds = np.append(_preds, pred_probs.argmax(1))
+                    _labels= np.append(_labels, labels.argmax(1))
+                    _ids = np.append(_ids, ids)
+                    _last_h = np.append(_last_h, last_h, axis=0)
+                    _fc_out = np.append(_fc_out, fc_output, axis=0)
+                    _probs = np.append(_probs, pred_probs, axis=0)
+                except tf.errors.OutOfRangeError:
+                    # Compute errors
+                    bol = _preds!=_labels
+                    err = np.sum(bol)/bol.shape[0]
+                    labels = np.array([self.trans[i] for i in _labels])
+                    pred_label = np.array([self.trans[i] for i in _preds])
+                    pred_probs = np.max(_probs, axis=-1)
+                    break
 
-            predictions = {'ids': ids, 'labels': labels, 'pred_label': pred_label, 'pred_probs': pred_probs, 'last_h': last_h, 'fc_output': fc_output}
+            _ids = np.hstack(_ids)
+
+            self.predictions = {'ids': _ids, 'labels': labels, 'pred_label': pred_label, 'pred_probs': pred_probs
+                            , 'last_h': [_last_h], 'fc_output': _fc_out}
 
             if not return_h:
-                predictions.pop('last_h')
+                self.predictions.pop('last_h')
 
             if not return_fc:
-                predictions.pop('fc_output')
+                self.predictions.pop('fc_output')
 
             if not return_p:
-                predictions.pop('pred_probs')
-
-            self.predictions = pd.DataFrame(predictions)
-            print('Prediction accuracy: {:3.2f}%'.format(100 * (1-err)))
+                self.predictions.pop('pred_probs')
 
             return self.predictions
