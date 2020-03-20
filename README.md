@@ -82,5 +82,6 @@ The parameters are:
 
 It returns a dictionary with keys _ids_, _labels_, _pred_label_. If selected,  _pred_probs_ and _last_h_.
 
+https://help.github.com/en/github/managing-files-in-a-repository/working-with-jupyter-notebook-files-on-github
 
 
