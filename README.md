@@ -7,7 +7,7 @@ from time import time
 ```
 
 This repository contains the code needed to train and evaluate the model presented in [Scalable End-to-end Recurrent Neural Network for Variable star classification
-](https://academic.oup.com/mnras/article/493/2/2981/5728517)
+](https://academic.oup.com/mnras/article/493/2/2981/5728517). It is written in python 3 and Tensorflow 1.15.
 
 All the datasets used are available at this [link](https://drive.google.com/drive/folders/1Ywjz8RKq8fsqQrK3NBiFUVAs1P17y13I?usp=sharing).
 Each file contains the light curves compressed and a csv file, wich contains the ID of the object, its class, the number of observations and the relative path ob the light curve of each object.
