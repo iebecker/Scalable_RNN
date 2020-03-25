@@ -1,13 +1,8 @@
 
 
 ```python
-import sys
-sys.path.append('/home/chispa/Dropbox/PhD/2019/2/Papers/Paper_1/Published_Code/')
-import pandas as pd
-import numpy as np
 from network import Network
 from preprocesser import Preprocesser
-import json
 from time import time
 ```
 
