@@ -46,25 +46,15 @@ class Preprocesser():
 
     def set_execution_variables(self, file_train, save_dir
                     , train_size, val_size, test_size):
-                    # , inference):
 
         '''Defines paths and split information.
         This function separates the object itself with the different
         excecutions of the object.'''
 
-        # Set inference mode
-        # self.inference = inference
         self.save_dir = save_dir
 
         if not os.path.exists(self.save_dir):
             os.makedirs(self.save_dir)
-
-        # If in inference mode, override min,max_N, and min,max_L
-        # if self.inference:
-        #     self.max_L = 1e9 #Arbitrary
-        #     self.min_L = 0
-        #     self.min_N = 0
-        #     self.max_N = 1e9 #Arbitrary
 
         self.default_split = True
         # Dataset info
@@ -122,8 +112,6 @@ class Preprocesser():
                 # Skip the class
                 continue
 
-            # Random sample of objects, not done in inference
-            # if not self.inference:
             # Return the min among the number of objects and max_L
             num = min(self.max_L, sel.shape[0])
             # Get a random sample
@@ -223,10 +211,6 @@ class Preprocesser():
         self.Labels_test, self.Matrices_test, self.IDs_test = self.__process_lcs_util(self.lcs_test)
         self.Labels_val, self.Matrices_val, self.IDs_val = self.__process_lcs_util(self.lcs_val)
 
-        # Shuffle the data
-        if not self.inference:
-            self.Labels_train, self.Matrices_train, self.IDs_train = self.__process_shuffle_util(self.Labels_train, self.Matrices_train, self.IDs_train)
-
     def __process_shuffle_util(self, _labels_, _matrices_, _ids_):
         '''Shuffles the data.'''
 
@@ -283,7 +267,6 @@ class Preprocesser():
         self.Labels, self.Matrices, self.IDs = self.__process_lcs_util(self.lcs)
 
         # Shuffle the data
-        # if not self.inference:
         self.Labels, self.Matrices, self.IDs = self.__process_shuffle_util(self.Labels, self.Matrices, self.IDs)
 
     def indices(self, train_ids, val_ids, test_ids):
@@ -402,11 +385,9 @@ class Preprocesser():
 
     def prepare(self, file_train, save_dir
                 , train_size = 0.70, val_size=0.10, test_size=0.2):
-                # , inference= False):
 
         self.set_execution_variables(file_train, save_dir
                         , train_size, val_size, test_size)
-                        # , inference)
         self.parallel_read()
         self.parallel_process()
         # Split only if default split is True
@@ -425,8 +406,6 @@ class Preprocesser():
             self.s =metadata['s']
             self.num_classes= metadata['Numer of classes']
             trans = metadata['Classes Info']['Keys']
-
-            # values = [int(k) for k in trans.values()]
             self.trans = {k:int(trans[k]) for k in trans.keys()}
 
     def prepare_inference(self, file_train, save_path, metadata_path):
