@@ -420,7 +420,7 @@ class Network():
 
             _ids = np.hstack(_ids).astype(str)
 
-            self.predictions = {'ids': _ids, 'labels': labels, 'pred_label': pred_label, 'pred_probs': pred_probs
+            self.predictions = {'ID': _ids, 'Label': labels, 'Label Label': pred_label, 'Pred Prob': pred_probs
                             , 'last_h': _last_h}
 
             if not return_h:
