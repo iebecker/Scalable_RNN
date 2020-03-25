@@ -1,6 +1,5 @@
 import json
 import itertools
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import os
@@ -21,8 +20,7 @@ class Network():
             self.size_test = int(metadata['Classes Info']['Test set']['Total'])
             self.size_val = int(metadata['Classes Info']['Val set']['Total'])
             trans = metadata['Classes Info']['Keys']
-            keys = [int(k) for k in trans.keys()]
-            self.trans = dict(zip(keys, trans.values()))
+            self.trans = dict(zip(trans.keys(), trans.values()))
 
     def set_train_settings(self, metadata_pre_path, size_hidden=None, rnn_layers=None, fc_units=None, fc_layers=None,
         buffer_size=None, epochs=None, num_cores=None, batch_size=None, dropout=None, lr=None, val_steps=None, max_to_keep=None,
@@ -46,11 +44,6 @@ class Network():
         log_folder = save_dir + 'Logs/'
         self.log_folder_train = log_folder + 'train/'
         self.log_folder_val = log_folder + 'val/'
-
-        plot_folder = save_dir + 'Plots/'
-        self.plot_folder_train = plot_folder + 'train/'
-        self.plot_folder_val = plot_folder + 'val/'
-
 
         self.model_dir = save_dir + 'Model/'
 
@@ -105,8 +98,7 @@ class Network():
             self.window = metadata['window']
             self.num_classes = metadata['num_classes']
             self.trans = metadata['class_keys']
-            keys = [int(k) for k in self.trans.keys()]
-            self.trans = dict(zip(keys, self.trans.values()))
+            self.trans_inv = dict(zip(self.trans.values(), self.trans.keys()))
 
     def GRU_cell(self):
 
@@ -118,8 +110,6 @@ class Network():
             kernel_initializer=glorot,
             bias_initializer=xavier
             )
-        # gru_cell = tf.contrib.rnn.DropoutWrapper(gru_cell, output_keep_prob=1.0 - self.dropout)
-
         return gru_cell
 
     def last_relevant(self, output, length):
@@ -303,67 +293,7 @@ class Network():
         self.add_model()
         self.add_saver()
 
-    def plot_cm_ax(self, ax, cm, normalize):
-        if normalize:
-            title = 'Normalized Confusion Matrix'
-        else:
-            title = 'Confusion Matrix'
-        ax.set_title(title)
-
-        labels = [self.trans[i] for i in range(self.num_classes)]
-        tick_marks = np.arange(self.num_classes)
-        ax.set_xticks(tick_marks)
-        ax.set_xticklabels(labels, rotation=45)
-        ax.set_yticks(tick_marks)
-        ax.set_yticklabels(labels)
-
-        if normalize:
-            cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-            for i in range(cm.shape[0]):
-                for j in range(cm.shape[1]):
-                    cm[i,j] ='%.2f' %cm[i,j]
-
-        thresh = 0.001
-        for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-            ax.text(j, i, cm[i, j], horizontalalignment='center', color='white' if cm[i, j] < thresh else 'black')
-
-        ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Greens)
-        ax.set_ylabel('True label')
-        ax.set_xlabel('Predicted label')
-
-
-    def plot_cm(self, target, prediction, save_dir, step):
-
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        save_path = save_dir + 'CM-' + str(step) + '.png'
-
-        plt.clf()
-        plt.rc('font', size=15)
-        plt.rc('axes', titlesize=15)
-        plt.rc('axes', labelsize=20)
-        plt.rc('xtick', labelsize=15)
-        plt.rc('ytick', labelsize=15)
-        plt.rc('legend', fontsize=15)
-        plt.rc('figure', titlesize=22)
-
-        f, (ax0, ax1) = plt.subplots(1, 2, figsize=(20,12))
-        cm = confusion_matrix(target,prediction)
-        self.plot_cm_ax(ax0, cm, normalize=False)
-        self.plot_cm_ax(ax1, cm, normalize=True)
-
-
-        cm_files = os.listdir(save_dir)
-        cm_files = [os.path.abspath(save_dir + f) for f in cm_files]
-        if len(cm_files) >= self.max_to_keep:
-            oldest_cm = min(cm_files, key=os.path.getctime)
-            os.remove(oldest_cm)
-
-        plt.tight_layout()
-        plt.savefig(save_path, format='png', dpi=250)
-        plt.close()
-
-    def save_metrics(self, sess, tfrecords, writer, plot_folder, step, name):
+    def save_metrics(self, sess, tfrecords, writer, step, name):
         # Initialize eval iterator
         handle = sess.run(self.eval_iterator.string_handle())
         iterator_dict = {self.filename_pl: tfrecords, self.epochs_pl: 1, self.handle_pl: handle}
@@ -400,7 +330,7 @@ class Network():
 
                 return Loss/bol.shape[0]
 
-    def train(self, train_args, tfrecords_train, tfrecords_val):#, tfrecords_dev):
+    def train(self, train_args, tfrecords_train, tfrecords_val):
 
         tf.compat.v1.reset_default_graph()
         self.set_train_settings(**train_args)
@@ -429,10 +359,10 @@ class Network():
                     feed_dict = {self.data_pl: data, self.target_pl: labels, self.length_pl: lengths
                                 , self.id_pl: ids, self.is_train:True, self.handle_pl:train_handle}
                     sess.run(self.train_step, feed_dict)
-                    if step%self.val_steps==0:
-                        args_train = [sess, tfrecords_train, self.writer_train, self.plot_folder_train
+                    if step+1%self.val_steps==0:
+                        args_train = [sess, tfrecords_train, self.writer_train
                         , step, 'Train']
-                        args_val = [sess, tfrecords_val, self.writer_val, self.plot_folder_val
+                        args_val = [sess, tfrecords_val, self.writer_val
                         , step, 'Val']
                         loss_train = self.save_metrics(*args_train)
                         loss_val = self.save_metrics(*args_val)
@@ -445,7 +375,7 @@ class Network():
                     self.writer_train.close()
                     break
 
-    def predict(self, tfrecords, model_name, metadata_train_path, return_h=False, return_fc=False, return_p=False):
+    def predict(self, tfrecords, model_name, metadata_train_path, return_h=False, return_p=False):
 
         tf.compat.v1.reset_default_graph()
         self.load_train_settings(metadata_train_path)
@@ -463,7 +393,6 @@ class Network():
             _labels= np.zeros(0)
             _ids = np.zeros(0,dtype=np.int64)
             _last_h = np.zeros((0,self.size_hidden))
-            _fc_out = np.zeros((0,self.fc_units))
             _probs =  np.zeros((0,self.num_classes))
             tensors = [self.last_h, self.fc, self.prediction]
 
@@ -479,27 +408,24 @@ class Network():
                     _labels= np.append(_labels, labels.argmax(1))
                     _ids = np.append(_ids, ids)
                     _last_h = np.append(_last_h, last_h, axis=0)
-                    _fc_out = np.append(_fc_out, fc_output, axis=0)
                     _probs = np.append(_probs, pred_probs, axis=0)
                 except tf.errors.OutOfRangeError:
                     # Compute errors
                     bol = _preds!=_labels
                     err = np.sum(bol)/bol.shape[0]
-                    labels = np.array([self.trans[i] for i in _labels])
-                    pred_label = np.array([self.trans[i] for i in _preds])
+                    labels = np.array([self.trans_inv[int(i)] for i in _labels])
+                    pred_label = np.array([self.trans_inv[int(i)] for i in _preds])
                     pred_probs = np.max(_probs, axis=-1)
                     break
 
-            _ids = np.hstack(_ids)
+            _ids = np.hstack(_ids).astype(str)
 
-            self.predictions = {'ids': _ids, 'labels': labels, 'pred_label': pred_label, 'pred_probs': pred_probs
-                            , 'last_h': [_last_h], 'fc_output': _fc_out}
+            self.predictions = {'ID': _ids, 'Label': labels, 'Label Label': pred_label, 'Pred Prob': pred_probs
+                            , 'last_h': _last_h}
 
             if not return_h:
                 self.predictions.pop('last_h')
 
-            if not return_fc:
-                self.predictions.pop('fc_output')
 
             if not return_p:
                 self.predictions.pop('pred_probs')
