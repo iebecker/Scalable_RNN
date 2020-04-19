@@ -359,7 +359,7 @@ class Network():
                     feed_dict = {self.data_pl: data, self.target_pl: labels, self.length_pl: lengths
                                 , self.id_pl: ids, self.is_train:True, self.handle_pl:train_handle}
                     sess.run(self.train_step, feed_dict)
-                    if step+1%self.val_steps==0:
+                    if (step+1)%self.val_steps==0:
                         args_train = [sess, tfrecords_train, self.writer_train
                         , step, 'Train']
                         args_val = [sess, tfrecords_val, self.writer_val
