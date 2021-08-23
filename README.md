@@ -198,44 +198,7 @@ t_end = time()
 print('Time elapsed: {:2.2f} minutes.'.format((t_end-t_ini)/60))
 ```
 
-    WARNING:tensorflow:From /usr/local/lib/python3.6/dist-packages/tensorflow_core/python/data/ops/iterator_ops.py:347: Iterator.output_types (from tensorflow.python.data.ops.iterator_ops) is deprecated and will be removed in a future version.
-    Instructions for updating:
-    Use `tf.compat.v1.data.get_output_types(iterator)`.
-    WARNING:tensorflow:From /usr/local/lib/python3.6/dist-packages/tensorflow_core/python/data/ops/iterator_ops.py:348: Iterator.output_shapes (from tensorflow.python.data.ops.iterator_ops) is deprecated and will be removed in a future version.
-    Instructions for updating:
-    Use `tf.compat.v1.data.get_output_shapes(iterator)`.
-    WARNING:tensorflow:From /usr/local/lib/python3.6/dist-packages/tensorflow_core/python/data/ops/iterator_ops.py:350: Iterator.output_classes (from tensorflow.python.data.ops.iterator_ops) is deprecated and will be removed in a future version.
-    Instructions for updating:
-    Use `tf.compat.v1.data.get_output_classes(iterator)`.
-    WARNING:tensorflow:
-    The TensorFlow contrib module will not be included in TensorFlow 2.0.
-    For more information, please see:
-      * https://github.com/tensorflow/community/blob/master/rfcs/20180907-contrib-sunset.md
-      * https://github.com/tensorflow/addons
-      * https://github.com/tensorflow/io (for I/O related ops)
-    If you depend on functionality not listed there, please file an issue.
-    
-    WARNING:tensorflow:From /home/chispa/Dropbox/PhD/2019/2/Papers/Paper_1/Published_Code/network.py:111: GRUCell.__init__ (from tensorflow.python.ops.rnn_cell_impl) is deprecated and will be removed in a future version.
-    Instructions for updating:
-    This class is equivalent as tf.keras.layers.GRUCell, and will be replaced by that in Tensorflow 2.0.
-    WARNING:tensorflow:From /home/chispa/Dropbox/PhD/2019/2/Papers/Paper_1/Published_Code/network.py:208: MultiRNNCell.__init__ (from tensorflow.python.ops.rnn_cell_impl) is deprecated and will be removed in a future version.
-    Instructions for updating:
-    This class is equivalent as tf.keras.layers.StackedRNNCells, and will be replaced by that in Tensorflow 2.0.
-    WARNING:tensorflow:From /home/chispa/Dropbox/PhD/2019/2/Papers/Paper_1/Published_Code/network.py:209: dynamic_rnn (from tensorflow.python.ops.rnn) is deprecated and will be removed in a future version.
-    Instructions for updating:
-    Please use `keras.layers.RNN(cell)`, which is equivalent to this API
-    WARNING:tensorflow:From /usr/local/lib/python3.6/dist-packages/tensorflow_core/python/ops/rnn_cell_impl.py:559: Layer.add_variable (from tensorflow.python.keras.engine.base_layer) is deprecated and will be removed in a future version.
-    Instructions for updating:
-    Please use `layer.add_weight` method instead.
-    WARNING:tensorflow:From /usr/local/lib/python3.6/dist-packages/tensorflow_core/python/ops/rnn.py:244: where (from tensorflow.python.ops.array_ops) is deprecated and will be removed in a future version.
-    Instructions for updating:
-    Use tf.where in 2.0, which has the same broadcast rule as np.where
-    WARNING:tensorflow:From /usr/local/lib/python3.6/dist-packages/tensorflow_core/contrib/layers/python/layers/layers.py:1866: Layer.apply (from tensorflow.python.keras.engine.base_layer) is deprecated and will be removed in a future version.
-    Instructions for updating:
-    Please use `layer.__call__` method instead.
-    WARNING:tensorflow:From /home/chispa/Dropbox/PhD/2019/2/Papers/Paper_1/Published_Code/network.py:134: dropout (from tensorflow.python.layers.core) is deprecated and will be removed in a future version.
-    Instructions for updating:
-    Use keras.layers.dropout instead.
+ 
     Prediction accuracy on Train set: 32.40%
     Prediction accuracy on Val set: 31.37%
     INFO:tensorflow:./Results/Model/model.ckpt-0 is not in all_model_checkpoint_paths. Manually adding it.
