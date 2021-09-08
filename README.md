@@ -145,7 +145,7 @@ P.prepare_inference(file_train=file_train
 
 To train a model, we create the object Network without any parameters.
 
-The function _train_ receives the dictionary **train_args**, and the serialized paths **tfrecords_trainfor** and **tfrecords_val**, to the training and validation files, respectively.
+The function _train_ receives the dictionary **train_args**, and the serialized paths **tfrecords_train** and **tfrecords_val**, to the training and validation files, respectively.
 
 It contains the following keys:
 1. **epochs**: The number of epochs used to train the model.
